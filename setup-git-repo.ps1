@@ -46,3 +46,4 @@ Write-Host "✅ Repository setup complete!" -ForegroundColor Green
 Write-Host "📍 Repository URL: https://github.com/santoshmvhs/pureborn.git" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Your Pureborn E-commerce Platform is now on GitHub! 🎉" -ForegroundColor Green
+
