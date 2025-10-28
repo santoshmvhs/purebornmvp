@@ -1,0 +1,136 @@
+/* Premium PUREBORN Logo Styles */
+.logo-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.logo-container:hover {
+  transform: scale(1.05);
+}
+
+.logo-symbol {
+  position: relative;
+  margin-bottom: 0.5rem;
+}
+
+.logo-pb {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-p {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #059669;
+  position: relative;
+  z-index: 2;
+}
+
+.logo-b {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #059669;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-30%, -50%);
+  z-index: 1;
+  opacity: 0.7;
+}
+
+.logo-registered {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #059669;
+  background: white;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #059669;
+}
+
+.logo-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #059669;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  position: relative;
+}
+
+.logo-text::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -10px;
+  right: -10px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #059669 50%, transparent 100%);
+  transform: translateY(-50%);
+  z-index: -1;
+}
+
+/* Logo Variations */
+.logo-container.large .logo-pb {
+  width: 80px;
+  height: 80px;
+}
+
+.logo-container.large .logo-p {
+  font-size: 3.5rem;
+}
+
+.logo-container.large .logo-b {
+  font-size: 2.5rem;
+}
+
+.logo-container.large .logo-text {
+  font-size: 1.25rem;
+}
+
+.logo-container.small .logo-pb {
+  width: 40px;
+  height: 40px;
+}
+
+.logo-container.small .logo-p {
+  font-size: 1.8rem;
+}
+
+.logo-container.small .logo-b {
+  font-size: 1.2rem;
+}
+
+.logo-container.small .logo-text {
+  font-size: 0.8rem;
+}
+
+/* White Logo Variant */
+.logo-container.white .logo-p,
+.logo-container.white .logo-b,
+.logo-container.white .logo-text {
+  color: white;
+}
+
+.logo-container.white .logo-registered {
+  color: white;
+  background: transparent;
+  border-color: white;
+}
+
+.logo-container.white .logo-text::before {
+  background: linear-gradient(90deg, transparent 0%, white 50%, transparent 100%);
+}

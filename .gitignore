@@ -1,0 +1,58 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Production builds
+frontend/build/
+admin-frontend/build/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.sql
+!database_schema.sql
+!marketing_schema.sql
+!customer_management_schema.sql
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+temp_key.txt
+test-*.js
+test-*.ts
+setup-database*.ps1
+setup-database*.bat
+
+# Backend
+backend/dist/
+backend/node_modules/
+
+# Frontend
+frontend/build/
+frontend/node_modules/
+
+# Admin Frontend
+admin-frontend/build/
+admin-frontend/node_modules/

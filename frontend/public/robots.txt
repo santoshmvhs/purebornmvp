@@ -1,0 +1,18 @@
+# This file is used by the build system to include only the necessary files
+# when deploying to production
+# See https://create-react-app.dev/docs/deployment/#static-files
+
+# Static files
+*.ico
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.webp
+
+# Manifest
+manifest.json
+
+# Robots
+robots.txt
