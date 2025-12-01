@@ -19,6 +19,18 @@ interface PurchaseItemForm {
   description?: string;
 }
 
+interface PurchaseItem {
+  id?: string;
+  raw_material_id?: string;
+  raw_material?: { name: string };
+  description?: string;
+  quantity: number;
+  unit: string;
+  price_per_unit: number;
+  line_total?: number;
+  gst_rate?: number;
+}
+
 interface Purchase {
   id: string;
   invoice_number: string | null;
@@ -30,7 +42,7 @@ interface Purchase {
   amount_card?: number;
   amount_credit?: number;
   notes?: string;
-  items?: PurchaseItemForm[];
+  items?: PurchaseItem[];
 }
 
 interface EditPurchaseDialogProps {
