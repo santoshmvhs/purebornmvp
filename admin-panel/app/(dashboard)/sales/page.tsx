@@ -89,7 +89,7 @@ export default function SalesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>₹{sale.total_amount.toFixed(2)}</TableCell>
-                    <TableCell>₹{(sale.total_gst || sale.total_tax).toFixed(2)}</TableCell>
+                    <TableCell>₹{(sale.total_tax || 0).toFixed(2)}</TableCell>
                     <TableCell className="font-semibold">
                       ₹{sale.grand_total.toFixed(2)}
                     </TableCell>
