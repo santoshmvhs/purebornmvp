@@ -1,6 +1,28 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+// Determine API URL based on environment
+// In production (Cloudflare Pages), default to production backend
+// In development, default to localhost
+const getApiBaseUrl = () => {
+  // If explicitly set, use that
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  
+  // If we're in production (Cloudflare Pages), use production backend
+  if (typeof window !== 'undefined') {
+    // Check if we're on a production domain
+    const hostname = window.location.hostname;
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return 'https://purebornmvp.onrender.com';
+    }
+  }
+  
+  // Default to localhost for local development
+  return 'http://localhost:9000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Create axios instance
 export const api = axios.create({
