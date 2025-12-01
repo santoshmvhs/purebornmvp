@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Render uses PORT environment variable
+ENV PORT=8000
+
 WORKDIR /app
 
 # Install system dependencies

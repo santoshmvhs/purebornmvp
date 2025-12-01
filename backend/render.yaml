@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: pureborn-backend
+    env: python
+    region: singapore  # Closest to your Supabase region (ap-southeast-1)
+    plan: starter  # $7/month - upgrade to standard ($25/month) for production
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false  # Set manually in Render dashboard
+      - key: JWT_SECRET_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: CORS_ORIGINS
+        sync: false  # Set manually in Render dashboard
+      - key: SENTRY_DSN
+        sync: false  # Optional - set manually if using Sentry
+      - key: REDIS_URL
+        sync: false  # Optional - set manually if using Redis for rate limiting
+    healthCheckPath: /health
+
