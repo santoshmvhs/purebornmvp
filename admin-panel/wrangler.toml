@@ -1,23 +1,5 @@
-name = "pureborn-admin-panel"
-compatibility_date = "2024-12-01"
+# Cloudflare Pages Configuration for Next.js
+# This file helps Cloudflare Pages understand your Next.js build
 
-# Build configuration
-[build]
-command = "npm run build"
-cwd = "."
-
-# Pages configuration
 pages_build_output_dir = ".next"
-
-# Environment variables (can be overridden in Cloudflare dashboard)
-[vars]
-NODE_ENV = "production"
-
-# Compatibility flags for Node.js APIs
-[compatibility_flags]
-nodejs_compat = true
-
-# Build environment
-[env.production]
-name = "pureborn-admin-panel"
 
