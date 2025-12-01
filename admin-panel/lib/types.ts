@@ -37,6 +37,10 @@ export interface Sale {
   grand_total: number;
   items?: SaleItem[];
   user?: User;
+  is_interstate?: boolean;
+  igst_amount?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
 }
 
 export interface DailySalesReport {

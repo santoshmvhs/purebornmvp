@@ -76,7 +76,7 @@ const nextConfig: NextConfig = {
       config.resolve.modules = ["node_modules"];
     }
     if (Array.isArray(config.resolve.modules)) {
-      config.resolve.modules = config.resolve.modules.filter(m => m !== projectRoot);
+      config.resolve.modules = config.resolve.modules.filter((m: string) => m !== projectRoot);
       config.resolve.modules.unshift(projectRoot);
     }
     

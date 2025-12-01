@@ -181,7 +181,7 @@ export default function SalesPage() {
 
                 <div className="flex justify-between text-sm font-medium">
                   <span>Total GST:</span>
-                  <span>₹{selectedSale.total_gst?.toFixed(2) || selectedSale.total_tax.toFixed(2)}</span>
+                  <span>₹{selectedSale.total_tax.toFixed(2)}</span>
                 </div>
 
                 <div className="flex justify-between font-bold text-lg border-t pt-2">
