@@ -4,8 +4,12 @@ import { existsSync, readdirSync } from "fs";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  // Ensure path aliases work correctly
-  webpack: (config, { isServer, dir }) => {
+  // Disable webpack cache in production to reduce build output size for Cloudflare Pages
+  webpack: (config, { isServer, dir, dev }) => {
+    // Disable cache in production builds to reduce output size
+    if (!dev && process.env.CF_PAGES) {
+      config.cache = false;
+    }
     // Try multiple possible root paths
     const possibleRoots = [
       dir,
