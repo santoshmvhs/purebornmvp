@@ -57,13 +57,16 @@ async def login(
     # Determine if we're in production (use secure cookies)
     is_production = settings.ENVIRONMENT == "production"
     
+    # For cross-origin requests (frontend on different domain), use SameSite=None with Secure=True
+    # For same-origin, SameSite=Lax is sufficient
+    # Since frontend is on Cloudflare Pages and backend on Render, we need SameSite=None
     response.set_cookie(
         key="access_token",
         value=access_token,
         max_age=max_age,
         httponly=True,  # Prevents JavaScript access (XSS protection)
-        secure=is_production,  # Only send over HTTPS in production
-        samesite="lax",  # CSRF protection
+        secure=True,  # Always use secure in production (required for SameSite=None)
+        samesite="none" if is_production else "lax",  # Cross-site in production, same-site in dev
         path="/",
     )
     
