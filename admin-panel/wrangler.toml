@@ -1,5 +1,6 @@
 # Cloudflare Pages Configuration for Next.js
 # This file helps Cloudflare Pages understand your Next.js build
 
+name = "pureborn-admin-panel"
 pages_build_output_dir = ".next"
 
