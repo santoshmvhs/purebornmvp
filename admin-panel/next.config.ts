@@ -1,18 +1,13 @@
 import type { NextConfig } from "next";
 import path from "path";
-import { fileURLToPath } from "url";
-
-// Get directory name in a way that works in both CommonJS and ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const nextConfig: NextConfig = {
   /* config options here */
   // Ensure path aliases work correctly
   webpack: (config, { isServer }) => {
     // Get the absolute path to the project root
-    // Use process.cwd() as fallback for Cloudflare build environment
-    const projectRoot = path.resolve(__dirname || process.cwd());
+    // Use process.cwd() as it's more reliable in build environments
+    const projectRoot = path.resolve(process.cwd());
     
     // Ensure resolve exists
     if (!config.resolve) {
