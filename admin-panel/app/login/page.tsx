@@ -1,22 +1,63 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { authApi } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/lib/store';
 import { logger } from '@/lib/logger';
+import { authApi } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
-  const [username, setUsername] = useState('');
+  const setSupabaseUser = useAuthStore((state) => state.setSupabaseUser);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setSupabaseUser(session.user);
+        // Get user data from backend
+        try {
+          const userData = await authApi.getCurrentUser();
+          setAuth(session.access_token, userData, session.user);
+          router.push('/');
+        } catch (err) {
+          logger.error('Failed to get user data:', err);
+        }
+      }
+    };
+    checkSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setSupabaseUser(session.user);
+        try {
+          const userData = await authApi.getCurrentUser();
+          setAuth(session.access_token, userData, session.user);
+          router.push('/');
+        } catch (err) {
+          logger.error('Failed to get user data:', err);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setAuth('', null, null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [router, setAuth, setSupabaseUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,25 +65,33 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      logger.log('Attempting login...');
-      const tokenData = await authApi.login(username, password);
-      logger.log('Login successful');
+      logger.log('Attempting Supabase login...');
+      
+      // Sign in with Supabase
+      const { data, error: supabaseError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      // Token is now stored in httpOnly cookie by the backend
-      // We still store it in localStorage for backward compatibility during migration
-      // TODO: Remove localStorage token storage once fully migrated to cookies
-      if (tokenData.access_token) {
-        localStorage.setItem('token', tokenData.access_token);
+      if (supabaseError) {
+        throw supabaseError;
       }
 
+      if (!data.session || !data.user) {
+        throw new Error('No session returned from Supabase');
+      }
+
+      logger.log('Supabase login successful');
+
+      // Get user data from backend (which will verify the Supabase JWT)
       const userData = await authApi.getCurrentUser();
       logger.log('User authenticated:', userData.username);
 
-      setAuth(tokenData.access_token, userData);
+      setAuth(data.session.access_token, userData, data.user);
       router.push('/');
     } catch (err: any) {
       logger.error('Login error:', err);
-      setError(err.response?.data?.detail || err.message || 'Login failed. Please try again.');
+      setError(err.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -60,13 +109,13 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="username"
-                type="text"
-                placeholder="Enter your username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
               />
@@ -93,8 +142,7 @@ export default function LoginPage() {
             </Button>
           </form>
           <div className="mt-4 text-sm text-muted-foreground text-center">
-            <p>Default credentials:</p>
-            <p className="font-mono">admin / admin123</p>
+            <p>Sign in with your email and password</p>
           </div>
         </CardContent>
       </Card>

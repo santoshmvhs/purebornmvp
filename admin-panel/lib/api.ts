@@ -32,22 +32,23 @@ export const api = axios.create({
 });
 
 // Request interceptor
-// Note: With httpOnly cookies, tokens are sent automatically by the browser
-// We don't need to manually add Authorization header, but we keep it for backward compatibility
-// if a token exists in localStorage (during migration period)
+// Note: With Supabase Auth, we use Supabase tokens
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
     // Set baseURL dynamically at request time (runtime)
     if (!config.baseURL) {
       config.baseURL = getApiBaseUrl();
     }
     
-    // Try localStorage first (for backward compatibility during migration)
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Get Supabase session token
+    if (typeof window !== 'undefined') {
+      const { supabase } = await import('@/lib/supabase');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        config.headers.Authorization = `Bearer ${session.access_token}`;
+      }
     }
-    // If no token in localStorage, rely on httpOnly cookie (sent automatically)
+    
     // withCredentials ensures cookies are sent with cross-origin requests
     config.withCredentials = true;
     return config;

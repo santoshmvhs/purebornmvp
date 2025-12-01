@@ -39,6 +39,16 @@ class Settings(BaseSettings):
         default="",
         description="Redis connection URL for rate limiting (optional, defaults to memory://)"
     )
+    
+    # Supabase configuration
+    SUPABASE_URL: str = Field(
+        default="",
+        description="Supabase project URL (required for Supabase Auth)"
+    )
+    SUPABASE_JWT_SECRET: str = Field(
+        default="",
+        description="Supabase JWT secret for token verification (found in Supabase Dashboard > Settings > API)"
+    )
 
     @field_validator('ENVIRONMENT')
     @classmethod

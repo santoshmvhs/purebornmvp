@@ -73,6 +73,26 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> O
     return user
 
 
+def verify_supabase_token(token: str) -> Optional[dict]:
+    """
+    Verify a Supabase JWT token.
+    Returns the payload if valid, None otherwise.
+    """
+    if not settings.SUPABASE_JWT_SECRET:
+        return None
+    
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated"
+        )
+        return payload
+    except JWTError:
+        return None
+
+
 async def get_current_user(
     request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
@@ -98,6 +118,29 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    # Try Supabase JWT first
+    supabase_payload = verify_supabase_token(token)
+    if supabase_payload:
+        # Supabase token is valid, get user by email
+        email = supabase_payload.get("email")
+        if email:
+            # Try to find user by email (assuming email is stored in username field or we have an email field)
+            # For now, we'll try to find by email in username field
+            result = await db.execute(
+                select(User).where(User.username == email)
+            )
+            user = result.scalar_one_or_none()
+            if user:
+                return user
+            # If user not found, try to find by email if we have an email column
+            # For now, raise exception - user needs to exist in our database
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User not found in system. Please contact administrator."
+            )
+    
+    # Fall back to our own JWT verification
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         username: str = payload.get("sub")

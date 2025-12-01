@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface User {
-  id: number;
+  id: string | number;
   username: string;
+  email?: string;
   role: string;
   is_active: boolean;
 }
@@ -11,7 +13,9 @@ interface User {
 interface AuthState {
   token: string | null;
   user: User | null;
-  setAuth: (token: string, user: User) => void;
+  supabaseUser: SupabaseUser | null;
+  setAuth: (token: string, user: User, supabaseUser?: SupabaseUser) => void;
+  setSupabaseUser: (supabaseUser: SupabaseUser | null) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
   isAdmin: () => boolean;
@@ -22,32 +26,27 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       token: null,
       user: null,
+      supabaseUser: null,
       
-      setAuth: (token, user) => {
-        // Store token in localStorage for backward compatibility during migration
-        // In production, token should be in httpOnly cookie only
-        // TODO: Remove localStorage token storage once fully migrated to cookies
-        if (token) {
-          localStorage.setItem('token', token);
-        }
-        localStorage.setItem('user', JSON.stringify(user));
-        set({ token, user });
+      setAuth: (token, user, supabaseUser) => {
+        set({ token, user, supabaseUser: supabaseUser || null });
+      },
+      
+      setSupabaseUser: (supabaseUser) => {
+        set({ supabaseUser });
       },
       
       clearAuth: () => {
-        // Clear localStorage tokens
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        // Note: httpOnly cookies are cleared by backend /logout endpoint
-        set({ token: null, user: null });
+        set({ token: null, user: null, supabaseUser: null });
       },
       
       isAuthenticated: () => {
-        return !!get().token;
+        return !!get().token || !!get().supabaseUser;
       },
       
       isAdmin: () => {
-        return get().user?.role === 'admin';
+        const user = get().user;
+        return user?.role === 'admin';
       },
     }),
     {
