@@ -24,11 +24,11 @@ interface Purchase {
   invoice_number: string | null;
   invoice_date: string;
   vendor_id: string;
-  purchase_category: string;
-  amount_cash: number;
-  amount_upi: number;
-  amount_card: number;
-  amount_credit: number;
+  purchase_category?: string;
+  amount_cash?: number;
+  amount_upi?: number;
+  amount_card?: number;
+  amount_credit?: number;
   notes?: string;
   items?: PurchaseItemForm[];
 }
