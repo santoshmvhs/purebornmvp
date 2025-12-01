@@ -6,9 +6,23 @@ import { Button } from '@/components/ui/button';
 export default function TestApiPage() {
   const [result, setResult] = useState<string>('');
 
+  const getApiUrl = () => {
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
+    // Auto-detect production
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+        return 'https://purebornmvp.onrender.com';
+      }
+    }
+    return 'http://localhost:9000';
+  };
+
   const testBackend = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/`);
       const data = await response.json();
       setResult(JSON.stringify(data, null, 2));
@@ -19,7 +33,7 @@ export default function TestApiPage() {
 
   const testLogin = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+      const apiUrl = getApiUrl();
       const params = new URLSearchParams();
       params.append('username', 'admin');
       params.append('password', 'admin123');
