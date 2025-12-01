@@ -1,9 +1,16 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  // Cloudflare Pages automatically handles Next.js builds
-  // No special configuration needed
+  // Ensure path aliases work correctly in Cloudflare Pages builds
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@": path.resolve(__dirname),
+    };
+    return config;
+  },
 };
 
 export default nextConfig;
