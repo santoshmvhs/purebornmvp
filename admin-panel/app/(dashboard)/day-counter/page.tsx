@@ -62,7 +62,7 @@ export default function DayCounterPage() {
 
   const loadDayCounters = async () => {
     try {
-      const data = await dayCountersApi.getAll({ limit: 100 });
+      const data = await dayCountersApi.getAll();
       setDayCounters(data || []);
     } catch (error) {
       logger.error('Failed to load day counters:', error);
