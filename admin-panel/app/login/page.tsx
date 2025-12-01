@@ -23,16 +23,24 @@ export default function LoginPage() {
   // Check for existing session on mount
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setSupabaseUser(session.user);
-        // Get user data from backend
-        try {
-          const userData = await authApi.getCurrentUser();
-          setAuth(session.access_token, userData, session.user);
-          router.push('/');
-        } catch (err) {
-          logger.error('Failed to get user data:', err);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setSupabaseUser(session.user);
+          // Get user data from backend
+          try {
+            const userData = await authApi.getCurrentUser();
+            setAuth(session.access_token, userData, session.user);
+            router.push('/');
+          } catch (err) {
+            logger.error('Failed to get user data:', err);
+          }
+        }
+      } catch (err: any) {
+        // Supabase not configured - show error to user
+        if (err.message?.includes('Supabase configuration')) {
+          setError('Supabase is not configured. Please contact administrator.');
+          logger.error('Supabase configuration error:', err);
         }
       }
     };
@@ -91,7 +99,15 @@ export default function LoginPage() {
       router.push('/');
     } catch (err: any) {
       logger.error('Login error:', err);
-      setError(err.message || 'Login failed. Please try again.');
+      
+      // Provide helpful error messages
+      if (err.message?.includes('Supabase configuration') || err.message?.includes('Failed to fetch')) {
+        setError('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.');
+      } else if (err.message?.includes('Invalid login credentials')) {
+        setError('Invalid email or password. Please try again.');
+      } else {
+        setError(err.message || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
