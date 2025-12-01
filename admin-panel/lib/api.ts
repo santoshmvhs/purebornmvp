@@ -1,18 +1,17 @@
 import axios from 'axios';
 
 // Determine API URL based on environment
-// In production (Cloudflare Pages), default to production backend
-// In development, default to localhost
-const getApiBaseUrl = () => {
-  // If explicitly set, use that
+// This function is called at runtime to ensure window is available
+const getApiBaseUrl = (): string => {
+  // If explicitly set via environment variable, use that
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
   
-  // If we're in production (Cloudflare Pages), use production backend
+  // If we're in the browser (client-side), check the hostname
   if (typeof window !== 'undefined') {
-    // Check if we're on a production domain
     const hostname = window.location.hostname;
+    // If not localhost, we're in production - use production backend
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
       return 'https://purebornmvp.onrender.com';
     }
@@ -22,11 +21,10 @@ const getApiBaseUrl = () => {
   return 'http://localhost:9000';
 };
 
-const API_BASE_URL = getApiBaseUrl();
-
-// Create axios instance
+// Create axios instance with dynamic baseURL
+// We'll set the baseURL dynamically in the request interceptor
 export const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: '', // Will be set dynamically
   headers: {
     'Content-Type': 'application/json',
   },
@@ -39,6 +37,11 @@ export const api = axios.create({
 // if a token exists in localStorage (during migration period)
 api.interceptors.request.use(
   (config) => {
+    // Set baseURL dynamically at request time (runtime)
+    if (!config.baseURL) {
+      config.baseURL = getApiBaseUrl();
+    }
+    
     // Try localStorage first (for backward compatibility during migration)
     const token = localStorage.getItem('token');
     if (token) {
