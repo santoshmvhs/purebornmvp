@@ -1,30 +1,38 @@
 import type { NextConfig } from "next";
 import path from "path";
+import { existsSync } from "fs";
 
 const nextConfig: NextConfig = {
   /* config options here */
   // Ensure path aliases work correctly
-  webpack: (config, { isServer }) => {
-    // Get the absolute path to the project root
-    // Use process.cwd() as it's more reliable in build environments
-    const projectRoot = path.resolve(process.cwd());
+  webpack: (config, { isServer, dir }) => {
+    // Use the dir parameter from Next.js which is always correct
+    const projectRoot = dir || process.cwd();
+    
+    // Verify the lib directory exists
+    const libPath = path.join(projectRoot, "lib");
+    if (!existsSync(libPath)) {
+      console.warn(`[webpack] Warning: lib directory not found at ${libPath}`);
+      console.warn(`[webpack] Current working directory: ${process.cwd()}`);
+      console.warn(`[webpack] Next.js dir: ${dir}`);
+    }
     
     // Ensure resolve exists
     if (!config.resolve) {
       config.resolve = {};
     }
     
-    // Set up alias - ensure it's an object, not array
-    const existingAlias = config.resolve.alias || {};
-    const alias = typeof existingAlias === "object" && !Array.isArray(existingAlias)
-      ? existingAlias
-      : {};
-    
-    // Set @ alias to project root
+    // Completely override alias to ensure @ is set correctly
     config.resolve.alias = {
-      ...alias,
+      ...(config.resolve.alias || {}),
       "@": projectRoot,
     };
+    
+    // Log for debugging in Cloudflare build
+    if (process.env.CI || process.env.CF_PAGES) {
+      console.log(`[webpack] Setting @ alias to: ${projectRoot}`);
+      console.log(`[webpack] Lib path exists: ${existsSync(libPath)}`);
+    }
     
     // Ensure extensions are resolved
     if (!config.resolve.extensions) {
@@ -37,11 +45,13 @@ const nextConfig: NextConfig = {
       }
     });
     
-    // Add project root to modules if not already there
+    // Add project root to modules
     if (!config.resolve.modules) {
       config.resolve.modules = ["node_modules"];
     }
-    if (Array.isArray(config.resolve.modules) && !config.resolve.modules.includes(projectRoot)) {
+    if (Array.isArray(config.resolve.modules)) {
+      // Remove projectRoot if it exists, then add it at the beginning
+      config.resolve.modules = config.resolve.modules.filter(m => m !== projectRoot);
       config.resolve.modules.unshift(projectRoot);
     }
     
