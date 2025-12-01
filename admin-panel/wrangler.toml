@@ -5,3 +5,7 @@
 name = "pureborn-admin-panel"
 pages_build_output_dir = ".vercel/output/static"
 
+# Compatibility flags required for Next.js on Cloudflare Pages
+# nodejs_compat is required for @cloudflare/next-on-pages
+compatibility_flags = ["nodejs_compat"]
+
