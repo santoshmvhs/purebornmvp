@@ -14,18 +14,35 @@ from app.database import get_db
 from app.models import User
 
 # Configure password hashing with bcrypt
-# truncate_error=False allows passlib to handle newer bcrypt versions
+# Use bcrypt directly instead of passlib for better compatibility
 pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto",
     bcrypt__default_rounds=12,
-    bcrypt__truncate_error=False
+    bcrypt__truncate_error=True  # Truncate passwords longer than 72 bytes
 )
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify a password against a hash.
+    Bcrypt has a 72-byte limit, so we truncate if necessary.
+    """
+    if not plain_password or not hashed_password:
+        return False
+    
+    # Bcrypt has a 72-byte limit, truncate if necessary
+    # Convert to bytes to check length accurately
+    password_bytes = plain_password.encode('utf-8')
+    if len(password_bytes) > 72:
+        plain_password = password_bytes[:72].decode('utf-8', errors='ignore')
+    
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except (ValueError, TypeError) as e:
+        # Log the error but don't expose it to prevent information leakage
+        return False
 
 
 def get_password_hash(password):

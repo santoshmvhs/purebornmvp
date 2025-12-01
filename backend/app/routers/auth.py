@@ -34,7 +34,18 @@ async def login(
     and httpOnly cookie (for security).
     Rate limited via slowapi middleware (configured in main.py).
     """
-    user = await authenticate_user(db, form_data.username, form_data.password)
+    # Validate and sanitize input
+    username = form_data.username.strip() if form_data.username else ""
+    password = form_data.password if form_data.password else ""
+    
+    # Basic validation
+    if not username or not password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Username and password are required"
+        )
+    
+    user = await authenticate_user(db, username, password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
