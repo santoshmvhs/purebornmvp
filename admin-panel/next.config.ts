@@ -86,6 +86,10 @@ const nextConfig: NextConfig = {
     
     return config;
   },
+  // Disable webpack cache to reduce build output size for Cloudflare Pages
+  experimental: {
+    webpackBuildWorker: false,
+  },
 };
 
 export default nextConfig;
