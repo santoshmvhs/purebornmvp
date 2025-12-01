@@ -1,28 +1,21 @@
 import type { NextConfig } from "next";
 import path from "path";
+import TsconfigPathsPlugin from "tsconfig-paths-webpack-plugin";
 
 const nextConfig: NextConfig = {
   /* config options here */
   // Ensure path aliases work correctly
   webpack: (config, { isServer }) => {
-    // Resolve path aliases for webpack
-    if (!config.resolve) {
-      config.resolve = {};
-    }
-    if (!config.resolve.alias) {
-      config.resolve.alias = {};
-    }
-    
-    // Resolve @ alias to the project root
-    const projectRoot = path.resolve(__dirname);
-    config.resolve.alias["@"] = projectRoot;
-    
-    // Also ensure modules can be resolved from the project root
-    if (!config.resolve.modules) {
-      config.resolve.modules = [];
-    }
-    if (!config.resolve.modules.includes(projectRoot)) {
-      config.resolve.modules.push(projectRoot);
+    // Use tsconfig-paths-webpack-plugin to read paths from tsconfig.json
+    if (config.resolve) {
+      if (!config.resolve.plugins) {
+        config.resolve.plugins = [];
+      }
+      config.resolve.plugins.push(
+        new TsconfigPathsPlugin({
+          configFile: path.resolve(__dirname, "tsconfig.json"),
+        })
+      );
     }
     
     return config;
