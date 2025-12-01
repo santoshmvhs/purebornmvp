@@ -1,11 +1,16 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  // Disable Turbopack for Cloudflare Pages compatibility
-  // Turbopack has issues with path aliases in some build environments
-  experimental: {
-    turbo: undefined,
+  // Ensure path aliases work correctly
+  webpack: (config, { isServer }) => {
+    // Resolve path aliases for webpack
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@": path.resolve(__dirname),
+    };
+    return config;
   },
 };
 
