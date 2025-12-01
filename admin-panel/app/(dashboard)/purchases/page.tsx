@@ -29,6 +29,11 @@ interface Purchase {
   invoice_date: string;
   vendor_id: string;
   vendor?: { name: string };
+  purchase_category?: string;
+  amount_cash?: number;
+  amount_upi?: number;
+  amount_card?: number;
+  amount_credit?: number;
   total_amount: number;
   total_paid: number;
   balance_due: number;
