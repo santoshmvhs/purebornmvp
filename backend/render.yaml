@@ -17,6 +17,8 @@ services:
         sync: false  # Set manually in Render dashboard
       - key: CORS_ORIGINS
         sync: false  # Set manually in Render dashboard
+        # Example value: https://purebornmvp.pages.dev,https://admin.pureborn.in
+        # Include all frontend URLs that will access the API
       - key: SENTRY_DSN
         sync: false  # Optional - set manually if using Sentry
       - key: REDIS_URL
