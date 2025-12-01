@@ -14,7 +14,7 @@ interface AuthState {
   token: string | null;
   user: User | null;
   supabaseUser: SupabaseUser | null;
-  setAuth: (token: string, user: User, supabaseUser?: SupabaseUser) => void;
+  setAuth: (token: string, user: User | null, supabaseUser?: SupabaseUser | null) => void;
   setSupabaseUser: (supabaseUser: SupabaseUser | null) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
@@ -29,7 +29,7 @@ export const useAuthStore = create<AuthState>()(
       supabaseUser: null,
       
       setAuth: (token, user, supabaseUser) => {
-        set({ token, user, supabaseUser: supabaseUser || null });
+        set({ token, user: user || null, supabaseUser: supabaseUser || null });
       },
       
       setSupabaseUser: (supabaseUser) => {
