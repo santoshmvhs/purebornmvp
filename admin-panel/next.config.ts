@@ -1,20 +1,51 @@
 import type { NextConfig } from "next";
 import path from "path";
-import { existsSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 
 const nextConfig: NextConfig = {
   /* config options here */
   // Ensure path aliases work correctly
   webpack: (config, { isServer, dir }) => {
-    // Use the dir parameter from Next.js which is always correct
-    const projectRoot = dir || process.cwd();
+    // Try multiple possible root paths
+    const possibleRoots = [
+      dir,
+      process.cwd(),
+      path.resolve(process.cwd()),
+      path.resolve(__dirname || process.cwd()),
+    ].filter(Boolean);
     
-    // Verify the lib directory exists
-    const libPath = path.join(projectRoot, "lib");
-    if (!existsSync(libPath)) {
-      console.warn(`[webpack] Warning: lib directory not found at ${libPath}`);
-      console.warn(`[webpack] Current working directory: ${process.cwd()}`);
-      console.warn(`[webpack] Next.js dir: ${dir}`);
+    // Find the actual root by checking for lib directory
+    let projectRoot = possibleRoots[0];
+    for (const root of possibleRoots) {
+      const libPath = path.join(root, "lib");
+      if (existsSync(libPath)) {
+        projectRoot = root;
+        break;
+      }
+    }
+    
+    // If still not found, try checking parent directories
+    if (!existsSync(path.join(projectRoot, "lib"))) {
+      let current = projectRoot;
+      for (let i = 0; i < 3; i++) {
+        current = path.dirname(current);
+        if (existsSync(path.join(current, "lib"))) {
+          projectRoot = current;
+          break;
+        }
+      }
+    }
+    
+    // Debug: List what's actually in the directory
+    if (process.env.CI || process.env.CF_PAGES) {
+      try {
+        const dirContents = readdirSync(projectRoot);
+        console.log(`[webpack] Directory contents: ${dirContents.join(", ")}`);
+        console.log(`[webpack] Using project root: ${projectRoot}`);
+        console.log(`[webpack] Lib exists: ${existsSync(path.join(projectRoot, "lib"))}`);
+      } catch (e) {
+        console.log(`[webpack] Could not read directory: ${e}`);
+      }
     }
     
     // Ensure resolve exists
@@ -22,17 +53,12 @@ const nextConfig: NextConfig = {
       config.resolve = {};
     }
     
-    // Completely override alias to ensure @ is set correctly
+    // Set alias - try both with and without trailing slash
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
       "@": projectRoot,
+      "@/": path.join(projectRoot, "/"),
     };
-    
-    // Log for debugging in Cloudflare build
-    if (process.env.CI || process.env.CF_PAGES) {
-      console.log(`[webpack] Setting @ alias to: ${projectRoot}`);
-      console.log(`[webpack] Lib path exists: ${existsSync(libPath)}`);
-    }
     
     // Ensure extensions are resolved
     if (!config.resolve.extensions) {
@@ -50,7 +76,6 @@ const nextConfig: NextConfig = {
       config.resolve.modules = ["node_modules"];
     }
     if (Array.isArray(config.resolve.modules)) {
-      // Remove projectRoot if it exists, then add it at the beginning
       config.resolve.modules = config.resolve.modules.filter(m => m !== projectRoot);
       config.resolve.modules.unshift(projectRoot);
     }
