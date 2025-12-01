@@ -27,7 +27,7 @@ A modern, responsive web-based admin panel for the Augment POS system built with
 ## Prerequisites
 
 - Node.js 18+ installed
-- Backend API running on `http://localhost:9000`
+- Backend API running (production: `https://purebornmvp.onrender.com` or local: `http://localhost:9000`)
 - Admin credentials (default: `admin` / `admin123`)
 
 ## Getting Started
@@ -80,11 +80,20 @@ npm run dev
 
 ## API Configuration
 
-The admin panel connects to the backend API. Update `.env.local` if needed:
+The admin panel connects to the backend API. 
+
+### Production
+The admin panel is configured to use the production backend by default:
+- **Production Backend**: `https://purebornmvp.onrender.com`
+
+### Local Development
+For local development, create a `.env.local` file:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:9000
 ```
+
+See `.env.example` for production configuration or `.env.local.example` for local development.
 
 ## Build for Production
 

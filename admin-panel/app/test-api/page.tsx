@@ -8,7 +8,8 @@ export default function TestApiPage() {
 
   const testBackend = async () => {
     try {
-      const response = await fetch('http://localhost:9000/');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+      const response = await fetch(`${apiUrl}/`);
       const data = await response.json();
       setResult(JSON.stringify(data, null, 2));
     } catch (error: any) {
@@ -18,11 +19,12 @@ export default function TestApiPage() {
 
   const testLogin = async () => {
     try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
       const params = new URLSearchParams();
       params.append('username', 'admin');
       params.append('password', 'admin123');
 
-      const response = await fetch('http://localhost:9000/auth/login', {
+      const response = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',

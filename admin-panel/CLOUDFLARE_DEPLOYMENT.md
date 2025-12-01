@@ -58,14 +58,14 @@ Click **"Environment variables"** and add:
 
 ```bash
 # Required
-NEXT_PUBLIC_API_URL=https://your-render-backend.onrender.com
+NEXT_PUBLIC_API_URL=https://purebornmvp.onrender.com
 
 # Optional (for analytics, etc.)
 NODE_ENV=production
 ```
 
 **Important**: 
-- Replace `your-render-backend.onrender.com` with your actual Render backend URL
+- The backend is already deployed at `https://purebornmvp.onrender.com`
 - Use `NEXT_PUBLIC_` prefix for client-side variables
 - Cloudflare Pages will rebuild automatically when you add variables
 
@@ -79,12 +79,14 @@ Click **"Save and Deploy"** - Cloudflare will:
 
 ### Step 6: Update Backend CORS
 
-After deployment, update your backend `CORS_ORIGINS` to include your Cloudflare Pages URL:
+After deployment, update your backend `CORS_ORIGINS` in Render dashboard to include your Cloudflare Pages URL:
 
-```bash
-# In Render dashboard → Environment variables
-CORS_ORIGINS=https://pureborn-admin-panel.pages.dev,https://your-custom-domain.com
-```
+1. Go to Render dashboard → Your backend service → **Environment**
+2. Update `CORS_ORIGINS`:
+   ```bash
+   CORS_ORIGINS=https://pureborn-admin-panel.pages.dev,https://your-custom-domain.com
+   ```
+3. Render will automatically redeploy with the new CORS settings
 
 ## Custom Domain (Optional)
 
