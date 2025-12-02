@@ -136,12 +136,17 @@ export default function LoginPage() {
           const apiUrl = getApiBaseUrl();
           logger.log('API URL:', apiUrl);
           
+          // Add timeout to prevent hanging
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          
           const response = await fetch(`${apiUrl}/auth/signup`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             credentials: 'include',
+            signal: controller.signal,
             body: JSON.stringify({
               username: email,
               password: 'placeholder', // Not used with Supabase Auth
@@ -149,6 +154,7 @@ export default function LoginPage() {
             }),
           });
 
+          clearTimeout(timeoutId);
           logger.log('Database signup response status:', response.status);
 
           if (!response.ok) {
@@ -165,8 +171,16 @@ export default function LoginPage() {
           // If database creation fails but Supabase signup succeeded, 
           // user can still log in - they just need to be added to database manually
           logger.warn('Failed to create user in database:', dbError);
+          
+          // Check if it's a timeout or network error
+          if (dbError.name === 'AbortError') {
+            setError('Request timed out. Please check your connection and try again.');
+            setLoading(false);
+            return;
+          }
+          
           if (!dbError.message?.includes('already')) {
-            setError(`Account created in Supabase, but failed to create database record: ${dbError.message}. Please contact administrator.`);
+            setError(`Account created in Supabase, but failed to create database record: ${dbError.message || 'Unknown error'}. Please contact administrator.`);
             setLoading(false);
             return;
           }
