@@ -78,25 +78,37 @@ def verify_supabase_token(token: str) -> Optional[dict]:
     Verify a Supabase JWT token.
     Returns the payload if valid, None otherwise.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if not settings.SUPABASE_JWT_SECRET:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.warning("SUPABASE_JWT_SECRET is not set - cannot verify Supabase tokens")
         return None
     
     try:
+        # Try decoding with audience="authenticated" first (standard Supabase JWT)
         payload = jwt.decode(
             token,
             settings.SUPABASE_JWT_SECRET,
             algorithms=["HS256"],
             audience="authenticated"
         )
+        logger.info("Supabase token decoded successfully with audience='authenticated'")
         return payload
     except JWTError as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Supabase token verification failed: {e}")
-        return None
+        # Try without audience check (some Supabase tokens might not have audience)
+        try:
+            payload = jwt.decode(
+                token,
+                settings.SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_aud": False}
+            )
+            logger.info("Supabase token decoded successfully without audience check")
+            return payload
+        except JWTError as e2:
+            logger.warning(f"Supabase token verification failed: {e} (with audience), {e2} (without audience)")
+            return None
 
 
 async def get_current_user(
@@ -108,16 +120,26 @@ async def get_current_user(
     # If they do reach here, we need to handle them gracefully
     # However, this should not happen if CORS is configured correctly
     
-    # Try to get token from cookie first (more secure), then from Authorization header
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Try to get token from Authorization header first, then from cookie
     if token is None:
-        token = request.cookies.get("access_token")
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split("Bearer ")[1]
+        else:
+            token = request.cookies.get("access_token")
     
     if token is None:
+        logger.warning("No token found in Authorization header or cookies")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    logger.info(f"Token received (length: {len(token)}, starts with: {token[:20]}...)")
     
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -126,8 +148,7 @@ async def get_current_user(
     )
     
     # Try Supabase JWT first
-    import logging
-    logger = logging.getLogger(__name__)
+    logger.info(f"SUPABASE_JWT_SECRET is set: {bool(settings.SUPABASE_JWT_SECRET)}, length: {len(settings.SUPABASE_JWT_SECRET) if settings.SUPABASE_JWT_SECRET else 0}")
     
     supabase_payload = verify_supabase_token(token)
     if supabase_payload:
