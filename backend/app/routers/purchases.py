@@ -149,8 +149,16 @@ async def create_purchase(
         
         await db.commit()
         
-        # Refresh to load relationships
-        await db.refresh(purchase, ["vendor", "items"])
+        # Reload purchase with all relationships properly loaded
+        result = await db.execute(
+            select(Purchase)
+            .options(
+                selectinload(Purchase.vendor),
+                selectinload(Purchase.items).selectinload(PurchaseItem.raw_material)
+            )
+            .where(Purchase.id == purchase.id)
+        )
+        purchase = result.scalar_one()
         
         return purchase
         
@@ -380,8 +388,16 @@ async def update_purchase(
         
         await db.commit()
         
-        # Refresh to load relationships
-        await db.refresh(purchase, ["vendor", "items"])
+        # Reload purchase with all relationships properly loaded
+        result = await db.execute(
+            select(Purchase)
+            .options(
+                selectinload(Purchase.vendor),
+                selectinload(Purchase.items).selectinload(PurchaseItem.raw_material)
+            )
+            .where(Purchase.id == purchase.id)
+        )
+        purchase = result.scalar_one()
         
         return purchase
         
