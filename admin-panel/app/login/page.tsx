@@ -118,9 +118,13 @@ export default function LoginPage() {
         const { data: signupData, error: signupError } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/login`,
+          },
         });
 
         if (signupError) {
+          logger.error('Supabase signup error:', signupError);
           throw signupError;
         }
 
@@ -128,7 +132,16 @@ export default function LoginPage() {
           throw new Error('No user returned from Supabase signup');
         }
 
-        logger.log('Supabase signup successful');
+        logger.log('Supabase signup successful, user:', signupData.user.email);
+        
+        // Check if email confirmation is required
+        if (signupData.session === null && signupData.user) {
+          // Email confirmation required
+          setError('Please check your email to confirm your account before signing in.');
+          setLoading(false);
+          setIsSignup(false);
+          return;
+        }
 
         // Create user in backend database
         try {
@@ -225,28 +238,73 @@ export default function LoginPage() {
         // Login flow
         logger.log('Attempting Supabase login...');
         
-        // Sign in with Supabase
-        const { data, error: supabaseError } = await supabase.auth.signInWithPassword({
+        // Sign in with Supabase with timeout
+        let loginTimeout: NodeJS.Timeout | null = null;
+        const loginPromise = supabase.auth.signInWithPassword({
           email,
           password,
         });
+        
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          loginTimeout = setTimeout(() => {
+            reject(new Error('Login request timed out. Please check your connection and try again.'));
+          }, 10000); // 10 second timeout
+        });
+
+        let data: any = null, supabaseError: any = null;
+        try {
+          const result = await Promise.race([loginPromise, timeoutPromise]);
+          if (loginTimeout) clearTimeout(loginTimeout);
+          
+          if (result.error) {
+            supabaseError = result.error;
+          } else {
+            data = result.data;
+          }
+        } catch (timeoutError: any) {
+          if (loginTimeout) clearTimeout(loginTimeout);
+          if (timeoutError.message?.includes('timed out')) {
+            setError('Login request timed out. Please check your connection and try again.');
+            setLoading(false);
+            return;
+          }
+          throw timeoutError;
+        }
 
         if (supabaseError) {
+          logger.error('Supabase login error:', supabaseError);
           throw supabaseError;
         }
 
-        if (!data.session || !data.user) {
+        if (!data || !data.session || !data.user) {
           throw new Error('No session returned from Supabase');
         }
 
-        logger.log('Supabase login successful');
+        logger.log('Supabase login successful, getting user data...');
 
         // Get user data from backend (which will verify the Supabase JWT)
-        const userData = await authApi.getCurrentUser();
-        logger.log('User authenticated:', userData.username);
+        try {
+          const userData = await authApi.getCurrentUser();
+          logger.log('User authenticated:', userData.username);
 
-        setAuth(data.session.access_token, userData, data.user);
-        router.push('/');
+          setAuth(data.session.access_token, userData, data.user);
+          router.push('/');
+        } catch (userError: any) {
+          logger.error('Failed to get user data:', userError);
+          // If user doesn't exist in database, show helpful message
+          if (userError.response?.status === 401 || userError.response?.status === 404) {
+            setError('User not found in database. Please contact administrator to add your account.');
+            setLoading(false);
+            return;
+          }
+          // If it's a network/timeout error
+          if (userError.code === 'ERR_NETWORK' || userError.message?.includes('timeout')) {
+            setError('Failed to connect to server. Please check your connection and try again.');
+            setLoading(false);
+            return;
+          }
+          throw userError;
+        }
       }
     } catch (err: any) {
       logger.error(isSignup ? 'Signup error:' : 'Login error:', err);
