@@ -370,21 +370,44 @@ export default function LoginPage() {
           logger.log('Supabase login successful, getting user data...');
           
           // Get user data from backend (which will verify the Supabase JWT)
+          // Use the session token directly instead of calling getSession() again
           try {
-            const userData = await authApi.getCurrentUser();
+            const apiUrl = getApiBaseUrl();
+            logger.log('Calling backend /users/me endpoint...', { apiUrl });
+            
+            const userDataResponse = await fetch(`${apiUrl}/users/me`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${result.data.session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+            });
+            
+            if (!userDataResponse.ok) {
+              if (userDataResponse.status === 401 || userDataResponse.status === 404) {
+                const errorText = await userDataResponse.text();
+                logger.error('Backend user lookup failed:', { status: userDataResponse.status, error: errorText });
+                setError('User not found in database. Please contact administrator to add your account.');
+                setLoading(false);
+                return;
+              }
+              throw new Error(`Backend returned ${userDataResponse.status}`);
+            }
+            
+            const userData = await userDataResponse.json();
             logger.log('User authenticated:', userData.username);
 
             setAuth(result.data.session.access_token, userData, result.data.user);
             router.push('/');
           } catch (userError: any) {
             logger.error('Failed to get user data:', userError);
-            // If user doesn't exist in database, show helpful message
-            if (userError.response?.status === 401 || userError.response?.status === 404) {
-              setError('User not found in database. Please contact administrator to add your account.');
+            // If it's a network/timeout error
+            if (userError.name === 'TypeError' && userError.message?.includes('fetch')) {
+              setError('Failed to connect to backend server. Please check your connection and try again.');
               setLoading(false);
               return;
             }
-            // If it's a network/timeout error
             if (userError.code === 'ERR_NETWORK' || userError.message?.includes('timeout')) {
               setError('Failed to connect to server. Please check your connection and try again.');
               setLoading(false);
