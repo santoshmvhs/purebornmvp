@@ -11,6 +11,20 @@ import { useAuthStore } from '@/lib/store';
 import { logger } from '@/lib/logger';
 import { authApi } from '@/lib/api';
 
+// Helper function to get API URL (same as in api.ts)
+const getApiBaseUrl = (): string => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return 'https://purebornmvp.onrender.com';
+    }
+  }
+  return 'http://localhost:9000';
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
@@ -118,10 +132,11 @@ export default function LoginPage() {
 
         // Create user in backend database
         try {
-          // Use the register endpoint to create user in database
-          // Note: This requires admin access, so we'll need to handle this differently
-          // For now, we'll create the user via a direct API call
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://purebornmvp.onrender.com'}/auth/signup`, {
+          logger.log('Creating user in database...');
+          const apiUrl = getApiBaseUrl();
+          logger.log('API URL:', apiUrl);
+          
+          const response = await fetch(`${apiUrl}/auth/signup`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -134,31 +149,38 @@ export default function LoginPage() {
             }),
           });
 
+          logger.log('Database signup response status:', response.status);
+
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({ detail: 'Failed to create user in database' }));
+            logger.error('Database signup error:', errorData);
             // If user already exists, that's okay - they can just log in
             if (response.status !== 400 || !errorData.detail?.includes('already')) {
               throw new Error(errorData.detail || 'Failed to create user in database');
             }
+          } else {
+            logger.log('User created in database successfully');
           }
         } catch (dbError: any) {
           // If database creation fails but Supabase signup succeeded, 
           // user can still log in - they just need to be added to database manually
           logger.warn('Failed to create user in database:', dbError);
           if (!dbError.message?.includes('already')) {
-            setError('Account created in Supabase, but failed to create database record. Please contact administrator.');
+            setError(`Account created in Supabase, but failed to create database record: ${dbError.message}. Please contact administrator.`);
             setLoading(false);
             return;
           }
         }
 
         // Auto sign in after signup
+        logger.log('Auto signing in after signup...');
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (signInError) {
+          logger.error('Auto signin error:', signInError);
           throw signInError;
         }
 
@@ -166,12 +188,25 @@ export default function LoginPage() {
           throw new Error('No session returned after signup');
         }
 
-        // Get user data from backend
-        const userData = await authApi.getCurrentUser();
-        logger.log('User authenticated after signup:', userData.username);
+        logger.log('Auto signin successful, getting user data...');
 
-        setAuth(signInData.session.access_token, userData, signInData.user);
-        router.push('/');
+        // Get user data from backend
+        try {
+          const userData = await authApi.getCurrentUser();
+          logger.log('User authenticated after signup:', userData.username);
+
+          setAuth(signInData.session.access_token, userData, signInData.user);
+          router.push('/');
+        } catch (userError: any) {
+          logger.error('Failed to get user data:', userError);
+          // If user doesn't exist in database yet, show helpful message
+          if (userError.response?.status === 401 || userError.response?.status === 404) {
+            setError('Account created in Supabase, but user not found in database. Please contact administrator to add your account.');
+            setLoading(false);
+            return;
+          }
+          throw userError;
+        }
       } else {
         // Login flow
         logger.log('Attempting Supabase login...');
