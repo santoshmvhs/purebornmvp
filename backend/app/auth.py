@@ -139,7 +139,9 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    logger.info(f"Token received (length: {len(token)}, starts with: {token[:20]}...)")
+    # Log token info (but don't log the full token for security)
+    token_preview = token[:20] + "..." if len(token) > 20 else token
+    logger.info(f"Token received (length: {len(token)}, starts with: {token_preview}, is_jwt_format: {len(token.split('.')) == 3})")
     
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
