@@ -114,18 +114,65 @@ export default function LoginPage() {
 
         logger.log('Attempting Supabase signup...');
         
-        // Sign up with Supabase
-        const { data: signupData, error: signupError } = await supabase.auth.signUp({
+        // Check if Supabase is configured before attempting signup
+        const supabaseClient = getSupabaseClient();
+        if (!supabaseClient) {
+          setError('Supabase is not configured. Please check your environment variables.');
+          setLoading(false);
+          return;
+        }
+        
+        logger.log('Supabase client initialized, starting signup...');
+        
+        // Sign up with Supabase with timeout
+        let signupTimeout: NodeJS.Timeout | null = null;
+        const signupPromise = supabaseClient.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/login`,
           },
         });
+        
+        const signupTimeoutPromise = new Promise<never>((_, reject) => {
+          signupTimeout = setTimeout(() => {
+            reject(new Error('Signup request timed out after 30 seconds. Please check your connection and try again.'));
+          }, 30000); // 30 second timeout
+        });
+        
+        let signupData: any = null, signupError: any = null;
+        try {
+          const result = await Promise.race([signupPromise, signupTimeoutPromise]);
+          if (signupTimeout) clearTimeout(signupTimeout);
+          
+          if (result.error) {
+            signupError = result.error;
+          } else {
+            signupData = result.data;
+          }
+        } catch (timeoutError: any) {
+          if (signupTimeout) clearTimeout(signupTimeout);
+          logger.error('Signup timeout error:', timeoutError);
+          if (timeoutError.message?.includes('timed out')) {
+            setError('Signup request timed out after 30 seconds. This might indicate:\n1. Slow network connection\n2. Supabase service is down\n3. Firewall blocking the request\n\nPlease check your internet connection and try again.');
+            setLoading(false);
+            return;
+          }
+          throw timeoutError;
+        }
+        
+        if (signupError) {
+          logger.error('Supabase signup error:', signupError);
+          throw signupError;
+        }
 
         if (signupError) {
           logger.error('Supabase signup error:', signupError);
           throw signupError;
+        }
+
+        if (!signupData.user) {
+          throw new Error('No user returned from Supabase signup');
         }
 
         if (!signupData.user) {
@@ -201,7 +248,7 @@ export default function LoginPage() {
 
         // Auto sign in after signup
         logger.log('Auto signing in after signup...');
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        const { data: signInData, error: signInError } = await supabaseClient.auth.signInWithPassword({
           email,
           password,
         });
@@ -238,17 +285,27 @@ export default function LoginPage() {
         // Login flow
         logger.log('Attempting Supabase login...');
         
-        // Sign in with Supabase with timeout
+        // Check if Supabase is configured before attempting login
+        const supabaseClient = getSupabaseClient();
+        if (!supabaseClient) {
+          setError('Supabase is not configured. Please check your environment variables.');
+          setLoading(false);
+          return;
+        }
+        
+        logger.log('Supabase client initialized, starting login...');
+        
+        // Sign in with Supabase with timeout (increased to 30 seconds for slow networks)
         let loginTimeout: NodeJS.Timeout | null = null;
-        const loginPromise = supabase.auth.signInWithPassword({
+        const loginPromise = supabaseClient.auth.signInWithPassword({
           email,
           password,
         });
         
         const timeoutPromise = new Promise<never>((_, reject) => {
           loginTimeout = setTimeout(() => {
-            reject(new Error('Login request timed out. Please check your connection and try again.'));
-          }, 10000); // 10 second timeout
+            reject(new Error('Login request timed out after 30 seconds. Please check your connection and try again.'));
+          }, 30000); // 30 second timeout for slow networks
         });
 
         let data: any = null, supabaseError: any = null;
@@ -263,8 +320,9 @@ export default function LoginPage() {
           }
         } catch (timeoutError: any) {
           if (loginTimeout) clearTimeout(loginTimeout);
+          logger.error('Login timeout error:', timeoutError);
           if (timeoutError.message?.includes('timed out')) {
-            setError('Login request timed out. Please check your connection and try again.');
+            setError('Login request timed out after 30 seconds. This might indicate:\n1. Slow network connection\n2. Supabase service is down\n3. Firewall blocking the request\n\nPlease check your internet connection and try again.');
             setLoading(false);
             return;
           }
