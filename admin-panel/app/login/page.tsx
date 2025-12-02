@@ -368,11 +368,13 @@ export default function LoginPage() {
           }
           
           logger.log('Supabase login successful, getting user data...');
+          console.log('[LOGIN] Supabase login successful, starting backend call...');
           
           // Get user data from backend (which will verify the Supabase JWT)
           // Use the session token directly instead of calling getSession() again
           try {
             const apiUrl = getApiBaseUrl();
+            console.log('[LOGIN] API URL:', apiUrl);
             logger.log('Calling backend /users/me endpoint...', { 
               apiUrl,
               tokenLength: result.data.session.access_token.length,
@@ -382,9 +384,11 @@ export default function LoginPage() {
             // Add timeout to fetch request
             const fetchController = new AbortController();
             const fetchTimeout = setTimeout(() => {
+              console.error('[LOGIN] Fetch timeout - aborting request');
               fetchController.abort();
             }, 10000); // 10 second timeout for backend call
             
+            console.log('[LOGIN] Starting fetch to', `${apiUrl}/users/me`);
             const fetchStartTime = Date.now();
             const userDataResponse = await fetch(`${apiUrl}/users/me`, {
               method: 'GET',
@@ -398,6 +402,11 @@ export default function LoginPage() {
             
             clearTimeout(fetchTimeout);
             const fetchElapsed = Date.now() - fetchStartTime;
+            console.log('[LOGIN] Backend response received:', {
+              status: userDataResponse.status,
+              ok: userDataResponse.ok,
+              elapsed: fetchElapsed
+            });
             logger.log(`Backend /users/me response received in ${fetchElapsed}ms`, {
               status: userDataResponse.status,
               ok: userDataResponse.ok
@@ -425,10 +434,12 @@ export default function LoginPage() {
             setAuth(result.data.session.access_token, userData, result.data.user);
             router.push('/');
           } catch (userError: any) {
+            console.error('[LOGIN] Failed to get user data:', userError);
             logger.error('Failed to get user data:', userError);
             
             // Handle timeout
             if (userError.name === 'AbortError') {
+              console.error('[LOGIN] Request was aborted (timeout)');
               setError('Backend request timed out. Please check:\n1. Backend server is running\n2. CORS is configured correctly\n3. Network connectivity');
               setLoading(false);
               return;
