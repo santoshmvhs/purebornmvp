@@ -121,7 +121,7 @@ export default function LoginPage() {
           // Use the register endpoint to create user in database
           // Note: This requires admin access, so we'll need to handle this differently
           // For now, we'll create the user via a direct API call
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://purebornmvp.onrender.com'}/auth/register`, {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://purebornmvp.onrender.com'}/auth/signup`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -146,3 +146,44 @@ async def register_user(
     
     return new_user
 
+
+@router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+async def signup_user(
+    user_data: UserCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Public signup endpoint for new users.
+    
+    Creates a user in the database after they've signed up in Supabase Auth.
+    This endpoint is public and doesn't require authentication.
+    """
+    # Check if username already exists
+    result = await db.execute(
+        select(User).where(User.username == user_data.username)
+    )
+    existing_user = result.scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
+    
+    # Validate role - default to cashier for public signups
+    role = user_data.role if user_data.role in ["admin", "cashier"] else "cashier"
+    
+    # Create new user
+    # Note: hashed_password is not used with Supabase Auth, but we'll set a placeholder
+    new_user = User(
+        username=user_data.username,
+        hashed_password=get_password_hash("placeholder"),  # Not used with Supabase Auth
+        role=role,
+        is_active=True
+    )
+    
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    
+    return new_user
+
