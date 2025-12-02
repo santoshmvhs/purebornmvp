@@ -304,55 +304,27 @@ export default function LoginPage() {
           keySet: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY 
         });
         
-        // Test Supabase connectivity first with timeout
-        try {
-          logger.log('Testing Supabase connectivity...');
-          const testController = new AbortController();
-          const testTimeout = setTimeout(() => testController.abort(), 5000); // 5 second timeout for test
-          
-          const testResponse = await fetch(`${supabaseUrl}/rest/v1/`, {
-            method: 'HEAD',
-            headers: {
-              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-            },
-            signal: testController.signal,
-          });
-          
-          clearTimeout(testTimeout);
-          logger.log('Supabase connectivity test passed:', { 
-            status: testResponse.status, 
-            ok: testResponse.ok,
-            url: `${supabaseUrl}/rest/v1/`
-          });
-        } catch (connectError: any) {
-          logger.error('Supabase connectivity test failed:', connectError);
-          if (connectError.name === 'AbortError') {
-            setError('Cannot reach Supabase server (timeout). Please check:\n1. Your internet connection\n2. Firewall settings\n3. Supabase service status');
-          } else {
-            setError(`Cannot reach Supabase server: ${connectError.message}. Please check your internet connection.`);
-          }
-          setLoading(false);
-          return;
-        }
-        
-        // Sign in with Supabase with timeout
+        // Skip connectivity test - it's causing issues, go straight to login
+        console.log('[LOGIN] Starting Supabase login...');
         logger.log('Calling Supabase signInWithPassword...');
         const startTime = Date.now();
         
-        // Use AbortController for proper timeout handling
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          controller.abort();
-        }, 30000); // 30 second timeout
-        
         try {
+          console.log('[LOGIN] Calling supabaseClient.auth.signInWithPassword...');
           const result = await supabaseClient.auth.signInWithPassword({
             email,
             password,
           });
           
-          clearTimeout(timeoutId);
+          console.log('[LOGIN] Supabase response received:', {
+            hasError: !!result.error,
+            hasSession: !!result.data?.session,
+            hasUser: !!result.data?.user,
+            error: result.error?.message
+          });
+          
           const elapsed = Date.now() - startTime;
+          console.log(`[LOGIN] Supabase signInWithPassword completed in ${elapsed}ms`);
           logger.log(`Supabase signInWithPassword completed in ${elapsed}ms`, { 
             hasError: !!result.error,
             hasSession: !!result.data?.session,
@@ -360,10 +332,12 @@ export default function LoginPage() {
           });
           
           if (result.error) {
+            console.error('[LOGIN] Supabase error:', result.error);
             throw result.error;
           }
           
           if (!result.data || !result.data.session || !result.data.user) {
+            console.error('[LOGIN] No session returned from Supabase');
             throw new Error('No session returned from Supabase');
           }
           
