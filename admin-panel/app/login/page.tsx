@@ -288,22 +288,48 @@ export default function LoginPage() {
         // Check if Supabase is configured before attempting login
         const supabaseClient = getSupabaseClient();
         if (!supabaseClient) {
-          setError('Supabase is not configured. Please check your environment variables.');
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'NOT SET';
+          const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET (hidden)' : 'NOT SET';
+          logger.error('Supabase not configured:', { url: supabaseUrl, key: supabaseKey });
+          setError(`Supabase is not configured. URL: ${supabaseUrl}, Key: ${supabaseKey}. Please check your Cloudflare Pages environment variables.`);
           setLoading(false);
           return;
         }
         
-        logger.log('Supabase client initialized, starting login...');
+        // Log Supabase configuration (without exposing the key)
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'unknown';
+        logger.log('Supabase client initialized, starting login...', { 
+          url: supabaseUrl,
+          urlLength: supabaseUrl.length,
+          keySet: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY 
+        });
         
         // Sign in with Supabase with timeout (increased to 30 seconds for slow networks)
+        logger.log('Calling Supabase signInWithPassword...');
+        const startTime = Date.now();
+        
         let loginTimeout: NodeJS.Timeout | null = null;
         const loginPromise = supabaseClient.auth.signInWithPassword({
           email,
           password,
+        }).then((result) => {
+          const elapsed = Date.now() - startTime;
+          logger.log(`Supabase signInWithPassword completed in ${elapsed}ms`, { 
+            hasError: !!result.error,
+            hasSession: !!result.data?.session,
+            hasUser: !!result.data?.user 
+          });
+          return result;
+        }).catch((err) => {
+          const elapsed = Date.now() - startTime;
+          logger.error(`Supabase signInWithPassword failed after ${elapsed}ms:`, err);
+          throw err;
         });
         
         const timeoutPromise = new Promise<never>((_, reject) => {
           loginTimeout = setTimeout(() => {
+            const elapsed = Date.now() - startTime;
+            logger.error(`Login request timed out after ${elapsed}ms (30s limit)`);
             reject(new Error('Login request timed out after 30 seconds. Please check your connection and try again.'));
           }, 30000); // 30 second timeout for slow networks
         });

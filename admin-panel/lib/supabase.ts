@@ -8,8 +8,19 @@ let lastKey: string | null = null;
 
 export const getSupabaseClient = (): SupabaseClient | null => {
   // Get Supabase URL and anon key from environment variables
+  // In Next.js, NEXT_PUBLIC_* vars are available at runtime via process.env
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  // Debug logging in development
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    console.log('[Supabase] Configuration check:', {
+      url: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'NOT SET',
+      urlLength: supabaseUrl.length,
+      keySet: !!supabaseAnonKey,
+      keyLength: supabaseAnonKey.length,
+    });
+  }
 
   // If we have a client and the credentials haven't changed, return it
   if (supabaseClient && lastUrl === supabaseUrl && lastKey === supabaseAnonKey) {
@@ -24,7 +35,12 @@ export const getSupabaseClient = (): SupabaseClient | null => {
       return null;
     } else {
       // Client-side runtime: return null, let components handle the error gracefully
-      console.warn('Supabase configuration is missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.');
+      console.error('[Supabase] Configuration is missing!', {
+        url: supabaseUrl || 'NOT SET',
+        key: supabaseAnonKey ? 'SET (hidden)' : 'NOT SET',
+        allEnvVars: Object.keys(process.env).filter(k => k.startsWith('NEXT_PUBLIC_')),
+      });
+      console.warn('Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.');
       return null;
     }
   }
@@ -38,6 +54,11 @@ export const getSupabaseClient = (): SupabaseClient | null => {
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     },
   });
+  
+  // Log successful client creation
+  if (typeof window !== 'undefined') {
+    console.log('[Supabase] Client created successfully', { url: supabaseUrl });
+  }
 
   lastUrl = supabaseUrl;
   lastKey = supabaseAnonKey;
