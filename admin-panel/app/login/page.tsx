@@ -304,91 +304,109 @@ export default function LoginPage() {
           keySet: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY 
         });
         
-        // Sign in with Supabase with timeout (increased to 30 seconds for slow networks)
+        // Test Supabase connectivity first with timeout
+        try {
+          logger.log('Testing Supabase connectivity...');
+          const testController = new AbortController();
+          const testTimeout = setTimeout(() => testController.abort(), 5000); // 5 second timeout for test
+          
+          const testResponse = await fetch(`${supabaseUrl}/rest/v1/`, {
+            method: 'HEAD',
+            headers: {
+              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+            },
+            signal: testController.signal,
+          });
+          
+          clearTimeout(testTimeout);
+          logger.log('Supabase connectivity test passed:', { 
+            status: testResponse.status, 
+            ok: testResponse.ok,
+            url: `${supabaseUrl}/rest/v1/`
+          });
+        } catch (connectError: any) {
+          logger.error('Supabase connectivity test failed:', connectError);
+          if (connectError.name === 'AbortError') {
+            setError('Cannot reach Supabase server (timeout). Please check:\n1. Your internet connection\n2. Firewall settings\n3. Supabase service status');
+          } else {
+            setError(`Cannot reach Supabase server: ${connectError.message}. Please check your internet connection.`);
+          }
+          setLoading(false);
+          return;
+        }
+        
+        // Sign in with Supabase with timeout
         logger.log('Calling Supabase signInWithPassword...');
         const startTime = Date.now();
         
-        let loginTimeout: NodeJS.Timeout | null = null;
-        const loginPromise = supabaseClient.auth.signInWithPassword({
-          email,
-          password,
-        }).then((result) => {
+        // Use AbortController for proper timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, 30000); // 30 second timeout
+        
+        try {
+          const result = await supabaseClient.auth.signInWithPassword({
+            email,
+            password,
+          });
+          
+          clearTimeout(timeoutId);
           const elapsed = Date.now() - startTime;
           logger.log(`Supabase signInWithPassword completed in ${elapsed}ms`, { 
             hasError: !!result.error,
             hasSession: !!result.data?.session,
             hasUser: !!result.data?.user 
           });
-          return result;
-        }).catch((err) => {
-          const elapsed = Date.now() - startTime;
-          logger.error(`Supabase signInWithPassword failed after ${elapsed}ms:`, err);
-          throw err;
-        });
-        
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          loginTimeout = setTimeout(() => {
-            const elapsed = Date.now() - startTime;
-            logger.error(`Login request timed out after ${elapsed}ms (30s limit)`);
-            reject(new Error('Login request timed out after 30 seconds. Please check your connection and try again.'));
-          }, 30000); // 30 second timeout for slow networks
-        });
-
-        let data: any = null, supabaseError: any = null;
-        try {
-          const result = await Promise.race([loginPromise, timeoutPromise]);
-          if (loginTimeout) clearTimeout(loginTimeout);
           
           if (result.error) {
-            supabaseError = result.error;
-          } else {
-            data = result.data;
+            throw result.error;
           }
-        } catch (timeoutError: any) {
-          if (loginTimeout) clearTimeout(loginTimeout);
-          logger.error('Login timeout error:', timeoutError);
-          if (timeoutError.message?.includes('timed out')) {
+          
+          if (!result.data || !result.data.session || !result.data.user) {
+            throw new Error('No session returned from Supabase');
+          }
+          
+          logger.log('Supabase login successful, getting user data...');
+          
+          // Get user data from backend (which will verify the Supabase JWT)
+          try {
+            const userData = await authApi.getCurrentUser();
+            logger.log('User authenticated:', userData.username);
+
+            setAuth(result.data.session.access_token, userData, result.data.user);
+            router.push('/');
+          } catch (userError: any) {
+            logger.error('Failed to get user data:', userError);
+            // If user doesn't exist in database, show helpful message
+            if (userError.response?.status === 401 || userError.response?.status === 404) {
+              setError('User not found in database. Please contact administrator to add your account.');
+              setLoading(false);
+              return;
+            }
+            // If it's a network/timeout error
+            if (userError.code === 'ERR_NETWORK' || userError.message?.includes('timeout')) {
+              setError('Failed to connect to server. Please check your connection and try again.');
+              setLoading(false);
+              return;
+            }
+            throw userError;
+          }
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          const elapsed = Date.now() - startTime;
+          
+          if (err.name === 'AbortError' || elapsed >= 29000) {
+            logger.error(`Login request timed out after ${elapsed}ms`);
             setError('Login request timed out after 30 seconds. This might indicate:\n1. Slow network connection\n2. Supabase service is down\n3. Firewall blocking the request\n\nPlease check your internet connection and try again.');
             setLoading(false);
             return;
           }
-          throw timeoutError;
+          
+          logger.error(`Supabase signInWithPassword failed after ${elapsed}ms:`, err);
+          throw err;
         }
 
-        if (supabaseError) {
-          logger.error('Supabase login error:', supabaseError);
-          throw supabaseError;
-        }
-
-        if (!data || !data.session || !data.user) {
-          throw new Error('No session returned from Supabase');
-        }
-
-        logger.log('Supabase login successful, getting user data...');
-
-        // Get user data from backend (which will verify the Supabase JWT)
-        try {
-          const userData = await authApi.getCurrentUser();
-          logger.log('User authenticated:', userData.username);
-
-          setAuth(data.session.access_token, userData, data.user);
-          router.push('/');
-        } catch (userError: any) {
-          logger.error('Failed to get user data:', userError);
-          // If user doesn't exist in database, show helpful message
-          if (userError.response?.status === 401 || userError.response?.status === 404) {
-            setError('User not found in database. Please contact administrator to add your account.');
-            setLoading(false);
-            return;
-          }
-          // If it's a network/timeout error
-          if (userError.code === 'ERR_NETWORK' || userError.message?.includes('timeout')) {
-            setError('Failed to connect to server. Please check your connection and try again.');
-            setLoading(false);
-            return;
-          }
-          throw userError;
-        }
       }
     } catch (err: any) {
       logger.error(isSignup ? 'Signup error:' : 'Login error:', err);
