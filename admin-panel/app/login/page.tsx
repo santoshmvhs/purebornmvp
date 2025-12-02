@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/lib/supabase';
+import { supabase, getSupabaseClient } from '@/lib/supabase';
 import { useAuthStore } from '@/lib/store';
 import { logger } from '@/lib/logger';
 import { authApi } from '@/lib/api';
@@ -38,33 +38,41 @@ export default function LoginPage() {
         }
       } catch (err: any) {
         // Supabase not configured - show error to user
-        if (err.message?.includes('Supabase configuration')) {
-          setError('Supabase is not configured. Please contact administrator.');
+        if (err.message?.includes('Supabase') || err.message?.includes('not configured')) {
+          setError('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.');
           logger.error('Supabase configuration error:', err);
         }
       }
     };
-    checkSession();
+    
+    // Only check session if Supabase is configured
+    const client = getSupabaseClient();
+    if (client) {
+      checkSession();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setSupabaseUser(session.user);
-        try {
-          const userData = await authApi.getCurrentUser();
-          setAuth(session.access_token, userData, session.user);
-          router.push('/');
-        } catch (err) {
-          logger.error('Failed to get user data:', err);
+      // Listen for auth changes
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          setSupabaseUser(session.user);
+          try {
+            const userData = await authApi.getCurrentUser();
+            setAuth(session.access_token, userData, session.user);
+            router.push('/');
+          } catch (err) {
+            logger.error('Failed to get user data:', err);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setAuth('', null, null);
         }
-      } else if (event === 'SIGNED_OUT') {
-        setAuth('', null, null);
-      }
-    });
+      });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+      return () => {
+        subscription.unsubscribe();
+      };
+    } else {
+      // Supabase not configured - show error immediately
+      setError('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.');
+    }
   }, [router, setAuth, setSupabaseUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {

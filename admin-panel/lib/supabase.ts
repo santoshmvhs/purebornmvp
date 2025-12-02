@@ -6,7 +6,7 @@ let supabaseClient: SupabaseClient | null = null;
 let lastUrl: string | null = null;
 let lastKey: string | null = null;
 
-export const getSupabaseClient = (): SupabaseClient => {
+export const getSupabaseClient = (): SupabaseClient | null => {
   // Get Supabase URL and anon key from environment variables
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -16,21 +16,16 @@ export const getSupabaseClient = (): SupabaseClient => {
     return supabaseClient;
   }
 
-  // During build time, environment variables might not be available
-  // In that case, we'll throw a more helpful error at runtime
+  // During build time or if env vars aren't set, return null instead of throwing
+  // This allows the app to load and show a helpful error message
   if (!supabaseUrl || !supabaseAnonKey) {
     if (typeof window === 'undefined') {
-      // Server-side/build time: throw error to prevent silent failures
-      throw new Error(
-        'Supabase environment variables are not set. ' +
-        'Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment variables.'
-      );
+      // Server-side/build time: return null to allow build to complete
+      return null;
     } else {
-      // Client-side runtime: throw error with helpful message
-      throw new Error(
-        'Supabase configuration is missing. ' +
-        'Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.'
-      );
+      // Client-side runtime: return null, let components handle the error gracefully
+      console.warn('Supabase configuration is missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.');
+      return null;
     }
   }
 
@@ -52,9 +47,22 @@ export const getSupabaseClient = (): SupabaseClient => {
 
 // Export a default instance for convenience
 // This will be initialized on first use
+// Returns null if Supabase is not configured
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
-    return getSupabaseClient()[prop as keyof SupabaseClient];
+    const client = getSupabaseClient();
+    if (!client) {
+      // Return a mock object that throws helpful errors when methods are called
+      if (prop === 'auth') {
+        return {
+          getSession: () => Promise.reject(new Error('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.')),
+          signInWithPassword: () => Promise.reject(new Error('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.')),
+          onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+        };
+      }
+      throw new Error('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Cloudflare Pages environment variables.');
+    }
+    return client[prop as keyof SupabaseClient];
   },
 });
 
