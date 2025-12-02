@@ -224,7 +224,7 @@ export default function LoginPage() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Pureborn</CardTitle>
           <CardDescription className="text-center">
-            Sign in to access the admin panel
+            {isSignup ? 'Create a new account' : 'Sign in to access the admin panel'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -251,19 +251,68 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
+                minLength={6}
               />
             </div>
+            {isSignup && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="Confirm your password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    disabled={loading}
+                    minLength={6}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role">Role</Label>
+                  <select
+                    id="role"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as 'admin' | 'cashier')}
+                    className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
+                    disabled={loading}
+                  >
+                    <option value="cashier">Cashier</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+              </>
+            )}
             {error && (
               <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                 {error}
               </div>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading 
+                ? (isSignup ? 'Creating account...' : 'Signing in...') 
+                : (isSignup ? 'Sign Up' : 'Sign In')
+              }
             </Button>
           </form>
-          <div className="mt-4 text-sm text-muted-foreground text-center">
-            <p>Sign in with your email and password</p>
+          <div className="mt-4 text-sm text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignup(!isSignup);
+                setError('');
+                setPassword('');
+                setConfirmPassword('');
+              }}
+              className="text-primary hover:underline"
+              disabled={loading}
+            >
+              {isSignup 
+                ? 'Already have an account? Sign in' 
+                : "Don't have an account? Sign up"
+              }
+            </button>
           </div>
         </CardContent>
       </Card>
