@@ -447,16 +447,8 @@ export default function LoginPage() {
             throw userError;
           }
         } catch (err: any) {
-          clearTimeout(timeoutId);
           const elapsed = Date.now() - startTime;
-          
-          if (err.name === 'AbortError' || elapsed >= 29000) {
-            logger.error(`Login request timed out after ${elapsed}ms`);
-            setError('Login request timed out after 30 seconds. This might indicate:\n1. Slow network connection\n2. Supabase service is down\n3. Firewall blocking the request\n\nPlease check your internet connection and try again.');
-            setLoading(false);
-            return;
-          }
-          
+          console.error('[LOGIN] Supabase signInWithPassword error:', err);
           logger.error(`Supabase signInWithPassword failed after ${elapsed}ms:`, err);
           throw err;
         }
