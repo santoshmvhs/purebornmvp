@@ -79,6 +79,9 @@ def verify_supabase_token(token: str) -> Optional[dict]:
     Returns the payload if valid, None otherwise.
     """
     if not settings.SUPABASE_JWT_SECRET:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("SUPABASE_JWT_SECRET is not set - cannot verify Supabase tokens")
         return None
     
     try:
@@ -89,7 +92,10 @@ def verify_supabase_token(token: str) -> Optional[dict]:
             audience="authenticated"
         )
         return payload
-    except JWTError:
+    except JWTError as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Supabase token verification failed: {e}")
         return None
 
 
@@ -120,8 +126,12 @@ async def get_current_user(
     )
     
     # Try Supabase JWT first
+    import logging
+    logger = logging.getLogger(__name__)
+    
     supabase_payload = verify_supabase_token(token)
     if supabase_payload:
+        logger.info(f"Supabase token verified successfully, email: {supabase_payload.get('email')}")
         # Supabase token is valid, get user by email
         email = supabase_payload.get("email")
         if email:
@@ -132,13 +142,17 @@ async def get_current_user(
             )
             user = result.scalar_one_or_none()
             if user:
+                logger.info(f"User found in database: {user.username}")
                 return user
             # If user not found, try to find by email if we have an email column
             # For now, raise exception - user needs to exist in our database
+            logger.warning(f"Supabase user {email} not found in database")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User not found in system. Please contact administrator."
             )
+    else:
+        logger.warning("Supabase token verification failed or SUPABASE_JWT_SECRET not set, trying regular JWT")
     
     # Fall back to our own JWT verification
     try:
