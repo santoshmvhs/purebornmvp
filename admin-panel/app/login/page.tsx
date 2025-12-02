@@ -388,12 +388,24 @@ export default function LoginPage() {
               fetchController.abort();
             }, 10000); // 10 second timeout for backend call
             
+            const accessToken = result.data.session.access_token;
+            console.log('[LOGIN] Token details:', {
+              tokenLength: accessToken?.length || 0,
+              tokenPrefix: accessToken?.substring(0, 20) || 'NO TOKEN',
+              isJWTFormat: accessToken?.split('.').length === 3,
+              fullToken: accessToken // Log full token for debugging (remove in production)
+            });
+            
+            if (!accessToken) {
+              throw new Error('No access token in Supabase session');
+            }
+            
             console.log('[LOGIN] Starting fetch to', `${apiUrl}/users/me`);
             const fetchStartTime = Date.now();
             const userDataResponse = await fetch(`${apiUrl}/users/me`, {
               method: 'GET',
               headers: {
-                'Authorization': `Bearer ${result.data.session.access_token}`,
+                'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json',
               },
               credentials: 'include',
