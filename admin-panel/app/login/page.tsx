@@ -311,10 +311,20 @@ export default function LoginPage() {
         
         try {
           console.log('[LOGIN] Calling supabaseClient.auth.signInWithPassword...');
-          const result = await supabaseClient.auth.signInWithPassword({
+          
+          // Add timeout wrapper for Supabase call
+          const loginPromise = supabaseClient.auth.signInWithPassword({
             email,
             password,
           });
+          
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error('Supabase login timed out after 15 seconds'));
+            }, 15000); // 15 second timeout
+          });
+          
+          const result = await Promise.race([loginPromise, timeoutPromise]) as any;
           
           console.log('[LOGIN] Supabase response received:', {
             hasError: !!result.error,
@@ -450,6 +460,13 @@ export default function LoginPage() {
           const elapsed = Date.now() - startTime;
           console.error('[LOGIN] Supabase signInWithPassword error:', err);
           logger.error(`Supabase signInWithPassword failed after ${elapsed}ms:`, err);
+          
+          if (err.message?.includes('timed out')) {
+            setError('Login request timed out. Please check:\n1. Your internet connection\n2. Supabase service status\n3. Firewall settings');
+            setLoading(false);
+            return;
+          }
+          
           throw err;
         }
 
