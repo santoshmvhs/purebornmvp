@@ -158,32 +158,48 @@ async def signup_user(
     Creates a user in the database after they've signed up in Supabase Auth.
     This endpoint is public and doesn't require authentication.
     """
-    # Check if username already exists
-    result = await db.execute(
-        select(User).where(User.username == user_data.username)
-    )
-    existing_user = result.scalar_one_or_none()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Check if username already exists
+        result = await db.execute(
+            select(User).where(User.username == user_data.username)
         )
-    
-    # Validate role - default to cashier for public signups
-    role = user_data.role if user_data.role in ["admin", "cashier"] else "cashier"
-    
-    # Create new user
-    # Note: hashed_password is not used with Supabase Auth, but we'll set a placeholder
-    new_user = User(
-        username=user_data.username,
-        hashed_password=get_password_hash("placeholder"),  # Not used with Supabase Auth
-        role=role,
-        is_active=True
-    )
-    
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
-    
-    return new_user
+        existing_user = result.scalar_one_or_none()
+        if existing_user:
+            logger.info(f"User {user_data.username} already exists in database")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered"
+            )
+        
+        # Validate role - default to cashier for public signups
+        role = user_data.role if user_data.role in ["admin", "cashier"] else "cashier"
+        
+        logger.info(f"Creating user {user_data.username} with role {role}")
+        
+        # Create new user
+        # Note: hashed_password is not used with Supabase Auth, but we'll set a placeholder
+        new_user = User(
+            username=user_data.username,
+            hashed_password=get_password_hash("placeholder"),  # Not used with Supabase Auth
+            role=role,
+            is_active=True
+        )
+        
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+        
+        logger.info(f"User {user_data.username} created successfully with ID {new_user.id}")
+        return new_user
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating user {user_data.username}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create user: {str(e)}"
+        )
 
