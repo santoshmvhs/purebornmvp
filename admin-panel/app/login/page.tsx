@@ -373,8 +373,19 @@ export default function LoginPage() {
           // Use the session token directly instead of calling getSession() again
           try {
             const apiUrl = getApiBaseUrl();
-            logger.log('Calling backend /users/me endpoint...', { apiUrl });
+            logger.log('Calling backend /users/me endpoint...', { 
+              apiUrl,
+              tokenLength: result.data.session.access_token.length,
+              tokenPrefix: result.data.session.access_token.substring(0, 20) + '...'
+            });
             
+            // Add timeout to fetch request
+            const fetchController = new AbortController();
+            const fetchTimeout = setTimeout(() => {
+              fetchController.abort();
+            }, 10000); // 10 second timeout for backend call
+            
+            const fetchStartTime = Date.now();
             const userDataResponse = await fetch(`${apiUrl}/users/me`, {
               method: 'GET',
               headers: {
@@ -382,17 +393,30 @@ export default function LoginPage() {
                 'Content-Type': 'application/json',
               },
               credentials: 'include',
+              signal: fetchController.signal,
+            });
+            
+            clearTimeout(fetchTimeout);
+            const fetchElapsed = Date.now() - fetchStartTime;
+            logger.log(`Backend /users/me response received in ${fetchElapsed}ms`, {
+              status: userDataResponse.status,
+              ok: userDataResponse.ok
             });
             
             if (!userDataResponse.ok) {
+              const errorText = await userDataResponse.text().catch(() => 'Unable to read error');
+              logger.error('Backend user lookup failed:', { 
+                status: userDataResponse.status, 
+                statusText: userDataResponse.statusText,
+                error: errorText 
+              });
+              
               if (userDataResponse.status === 401 || userDataResponse.status === 404) {
-                const errorText = await userDataResponse.text();
-                logger.error('Backend user lookup failed:', { status: userDataResponse.status, error: errorText });
                 setError('User not found in database. Please contact administrator to add your account.');
                 setLoading(false);
                 return;
               }
-              throw new Error(`Backend returned ${userDataResponse.status}`);
+              throw new Error(`Backend returned ${userDataResponse.status}: ${errorText}`);
             }
             
             const userData = await userDataResponse.json();
@@ -402,17 +426,27 @@ export default function LoginPage() {
             router.push('/');
           } catch (userError: any) {
             logger.error('Failed to get user data:', userError);
-            // If it's a network/timeout error
-            if (userError.name === 'TypeError' && userError.message?.includes('fetch')) {
-              setError('Failed to connect to backend server. Please check your connection and try again.');
+            
+            // Handle timeout
+            if (userError.name === 'AbortError') {
+              setError('Backend request timed out. Please check:\n1. Backend server is running\n2. CORS is configured correctly\n3. Network connectivity');
               setLoading(false);
               return;
             }
+            
+            // If it's a network/timeout error
+            if (userError.name === 'TypeError' && userError.message?.includes('fetch')) {
+              setError('Failed to connect to backend server. Please check:\n1. Backend URL is correct\n2. Backend server is running\n3. CORS is configured');
+              setLoading(false);
+              return;
+            }
+            
             if (userError.code === 'ERR_NETWORK' || userError.message?.includes('timeout')) {
               setError('Failed to connect to server. Please check your connection and try again.');
               setLoading(false);
               return;
             }
+            
             throw userError;
           }
         } catch (err: any) {
