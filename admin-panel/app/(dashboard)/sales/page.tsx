@@ -200,9 +200,13 @@ export default function SalesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectedSale.items?.map((item) => (
+                    {selectedSale.items?.map((item: any) => (
                       <TableRow key={item.id}>
-                        <TableCell>{item.product?.name}</TableCell>
+                        <TableCell>
+                          {item.product_variant?.product?.name 
+                            ? `${item.product_variant.product.name} (${item.product_variant.variant_name})`
+                            : item.product_variant?.variant_name || 'Unknown Product'}
+                        </TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>₹{((item.unit_price || 0)).toFixed(2)}</TableCell>
                         <TableCell>₹{((item.line_total || 0)).toFixed(2)}</TableCell>

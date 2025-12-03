@@ -196,7 +196,7 @@ async def get_sale(
     return sale
 
 
-@router.get("", response_model=List[SaleNewRead])
+@router.get("", response_model=List[SaleNewWithItems])
 async def list_sales(
     start_date: Optional[date] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
@@ -207,26 +207,28 @@ async def list_sales(
 ):
     """
     List sales with optional date range filtering and pagination.
+    Includes items and customer relationships.
     """
-    query = select(Sale)
+    query = select(Sale).options(
+        selectinload(Sale.items).selectinload(SaleItem.product_variant).selectinload(ProductVariant.product),
+        selectinload(Sale.customer)
+    )
     
-    # Date range filtering
+    # Date range filtering - use invoice_date if available, otherwise created_at
     if start_date:
-        start_datetime = datetime.combine(start_date, datetime.min.time())
-        query = query.where(Sale.created_at >= start_datetime)
+        query = query.where(Sale.invoice_date >= start_date)
     if end_date:
-        end_datetime = datetime.combine(end_date, datetime.max.time())
-        query = query.where(Sale.created_at <= end_datetime)
+        query = query.where(Sale.invoice_date <= end_date)
     
-    # Order by most recent first
-    query = query.order_by(Sale.created_at.desc())
+    # Order by most recent first (use invoice_date if available)
+    query = query.order_by(Sale.invoice_date.desc().nullslast(), Sale.created_at.desc())
     
     # Pagination
     offset = (page - 1) * limit
     query = query.offset(offset).limit(limit)
     
     result = await db.execute(query)
-    sales = result.scalars().all()
+    sales = result.scalars().unique().all()
     
     return sales
 
