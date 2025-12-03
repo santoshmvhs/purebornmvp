@@ -39,7 +39,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         plain_password = password_bytes[:72].decode('utf-8', errors='ignore')
     
     try:
-    return pwd_context.verify(plain_password, hashed_password)
+        return pwd_context.verify(plain_password, hashed_password)
     except (ValueError, TypeError) as e:
         # Log the error but don't expose it to prevent information leakage
         return False
