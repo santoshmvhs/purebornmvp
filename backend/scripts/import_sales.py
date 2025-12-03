@@ -83,54 +83,82 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
         return
     
     try:
-        # Read Excel file
+        # Check if Excel has multiple sheets
+        df = None
+        use_item_details = False
+        
         if HAS_PANDAS:
-            # Try reading with header in row 3 (for Paytm POS format)
-            # First try row 3, then fallback to row 0
-            df = None
-            header_row = None
+            excel_file = pd.ExcelFile(file_path)
+            sheet_names = excel_file.sheet_names
+            print(f"Found sheets: {sheet_names}")
             
-            # Try different header rows - Paytm POS often has headers in row 2 or 3
-            for row_num in [2, 1, 0]:  # Try row 3, 2, then 1 (0-indexed)
-                try:
-                    df_test = pd.read_excel(file_path, header=row_num)
-                    # Check if we got meaningful column names
-                    cols = df_test.columns.tolist()
-                    if cols and not all('unnamed' in str(col).lower() for col in cols):
-                        # Check if columns contain header keywords
-                        col_str = ' '.join([str(c).lower() for c in cols])
-                        header_keywords = ['date', 'invoice', 'item', 'quantity', 'price', 'amount', 'qty']
-                        if any(keyword in col_str for keyword in header_keywords):
-                            df = df_test
-                            header_row = row_num
+            # Prefer "Invoice Item Details" sheet if available (has line items)
+            df_items = None
+            df_summary = None
+            
+            if "Invoice Item Details" in sheet_names:
+                print("Found 'Invoice Item Details' sheet - using for line items")
+                df_items = pd.read_excel(file_path, sheet_name="Invoice Item Details", header=0)
+            elif "Invoice List" in sheet_names:
+                print("Found 'Invoice List' sheet - using for summary")
+                df_summary = pd.read_excel(file_path, sheet_name="Invoice List", header=0)
+            
+            # If we have item details, use that; otherwise use summary
+            if df_items is not None and not df_items.empty:
+                df = df_items
+                use_item_details = True
+            elif df_summary is not None and not df_summary.empty:
+                df = df_summary
+                use_item_details = False
+            
+            # If still no df, fallback to original logic
+            if df is None:
+                # Try reading with header in row 3 (for Paytm POS format)
+                # First try row 3, then fallback to row 0
+                header_row = None
+            
+                # Try different header rows - Paytm POS often has headers in row 2 or 3
+                for row_num in [2, 1, 0]:  # Try row 3, 2, then 1 (0-indexed)
+                    try:
+                        df_test = pd.read_excel(file_path, header=row_num)
+                        # Check if we got meaningful column names
+                        cols = df_test.columns.tolist()
+                        if cols and not all('unnamed' in str(col).lower() for col in cols):
+                            # Check if columns contain header keywords
+                            col_str = ' '.join([str(c).lower() for c in cols])
+                            header_keywords = ['date', 'invoice', 'item', 'quantity', 'price', 'amount', 'qty']
+                            if any(keyword in col_str for keyword in header_keywords):
+                                df = df_test
+                                header_row = row_num
+                                break
+                    except Exception as e:
+                        continue
+                
+                # If still no good header, try reading without header and manually set
+                if df is None or (df is not None and all('unnamed' in str(col).lower() for col in df.columns)):
+                    df = pd.read_excel(file_path, header=None)
+                    # Try to find header row by checking first few rows
+                    for row_idx in range(min(10, len(df))):
+                        row_values = df.iloc[row_idx].astype(str).str.lower().tolist()
+                        row_str = ' '.join(row_values)
+                        # Check if this row looks like headers (contains common header words)
+                        header_keywords = ['date', 'invoice', 'item', 'quantity', 'price', 'amount', 'qty', 'product']
+                        if any(keyword in row_str for keyword in header_keywords):
+                            df.columns = df.iloc[row_idx]
+                            df = df.iloc[row_idx + 1:].reset_index(drop=True)
+                            print(f"Found header row at index {row_idx}")
                             break
-                except Exception as e:
-                    continue
-            
-            # If still no good header, try reading without header and manually set
-            if df is None or all('unnamed' in str(col).lower() for col in df.columns):
-                df = pd.read_excel(file_path, header=None)
-                # Try to find header row by checking first few rows
-                for row_idx in range(min(10, len(df))):
-                    row_values = df.iloc[row_idx].astype(str).str.lower().tolist()
-                    row_str = ' '.join(row_values)
-                    # Check if this row looks like headers (contains common header words)
-                    header_keywords = ['date', 'invoice', 'item', 'quantity', 'price', 'amount', 'qty', 'product']
-                    if any(keyword in row_str for keyword in header_keywords):
-                        df.columns = df.iloc[row_idx]
-                        df = df.iloc[row_idx + 1:].reset_index(drop=True)
-                        print(f"Found header row at index {row_idx}")
-                        break
-            
-            if df.empty:
-                print("Error: Excel file is empty or could not be parsed")
-                return
             
             # Normalize column names (case-insensitive, remove spaces, handle special chars)
-            df.columns = df.columns.astype(str).str.strip().str.lower().str.replace(' ', '_').str.replace('.', '').str.replace('/', '_').str.replace('\\', '_')
-            
-            # Remove rows that are completely empty or have all NaN values
-            df = df.dropna(how='all')
+            if df is not None:
+                if df.empty:
+                    print("Error: Excel file is empty or could not be parsed")
+                    return
+                
+                df.columns = df.columns.astype(str).str.strip().str.lower().str.replace(' ', '_').str.replace('.', '').str.replace('/', '_').str.replace('\\', '_').str.replace('(', '').str.replace(')', '')
+                
+                # Remove rows that are completely empty or have all NaN values
+                df = df.dropna(how='all')
         else:
             print("Error: pandas is required for sales import")
             return
@@ -454,26 +482,81 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                             variant = variant_by_name.get(name_key)
                         
                         if not variant:
-                            skipped.append({
-                                'invoice': invoice_num,
-                                'product': product_name,
-                                'reason': 'Product not found'
-                            })
-                            continue
+                            # Always use default variant if product not found (so we don't skip the sale)
+                            if default_variant:
+                                variant = default_variant
+                            else:
+                                # Skip this item but continue with the invoice
+                                skipped.append({
+                                    'invoice': invoice_num,
+                                    'product': product_name or 'Unknown',
+                                    'reason': 'Product not found and no default variant available'
+                                })
+                                continue
                         
                         # Get quantity and price
                         try:
                             qty = Decimal(str(row[actual_columns['quantity']]))
-                            if 'total' in actual_columns:
+                            
+                            # Get unit price (prefer 'price' or 'selling_price_per_unit', fallback to calculating from total)
+                            if 'price' in actual_columns:
+                                price_val = row[actual_columns['price']]
+                                if price_val and not pd.isna(price_val):
+                                    unit_price = Decimal(str(price_val))
+                                else:
+                                    raise ValueError("Price is NaN")
+                            elif 'total' in actual_columns:
                                 total = Decimal(str(row[actual_columns['total']]))
                                 unit_price = total / qty if qty > 0 else Decimal(0)
                             else:
-                                unit_price = Decimal(str(row[actual_columns['price']]))
-                                total = unit_price * qty
+                                raise ValueError("No price column found")
+                            
+                            # Get line total (prefer 'sub_total_item' or 'total', or calculate)
+                            if 'sub_total_item' in actual_columns:
+                                sub_total_val = row[actual_columns['sub_total_item']]
+                                if sub_total_val and not pd.isna(sub_total_val):
+                                    line_total = Decimal(str(sub_total_val))
+                                else:
+                                    line_total = unit_price * qty
+                            elif 'total' in actual_columns:
+                                total_val = row[actual_columns['total']]
+                                if total_val and not pd.isna(total_val):
+                                    # This might be GST-inclusive, so we need to extract taxable value
+                                    line_total = Decimal(str(total_val))
+                                else:
+                                    line_total = unit_price * qty
+                            else:
+                                line_total = unit_price * qty
+                            
+                            # Get GST amounts for this item
+                            item_cgst = Decimal(0)
+                            item_sgst = Decimal(0)
+                            if 'cgst' in actual_columns:
+                                cgst_val = row[actual_columns['cgst']]
+                                if cgst_val and not pd.isna(cgst_val):
+                                    item_cgst = Decimal(str(cgst_val))
+                            if 'sgst' in actual_columns:
+                                sgst_val = row[actual_columns['sgst']]
+                                if sgst_val and not pd.isna(sgst_val):
+                                    item_sgst = Decimal(str(sgst_val))
+                            
+                            item_gst_total = item_cgst + item_sgst
+                            
+                            # Calculate taxable value (if line_total is GST-inclusive)
+                            if item_gst_total > 0 and line_total > item_gst_total:
+                                taxable_value = line_total - item_gst_total
+                            else:
+                                taxable_value = line_total
+                            
+                            # Calculate GST rate
+                            gst_rate = Decimal(0)
+                            if taxable_value > 0 and item_gst_total > 0:
+                                gst_rate = (item_gst_total / taxable_value) * 100
+                            
                         except Exception as e:
                             skipped.append({
                                 'invoice': invoice_num,
-                                'product': product_name,
+                                'product': product_name or 'Unknown',
                                 'reason': f'Invalid quantity or price: {str(e)}'
                             })
                             continue
@@ -481,15 +564,15 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                         sale_items.append({
                             'product_variant_id': variant.id,
                             'quantity': float(qty),
-                            'unit_price': float(unit_price),
-                            'line_total': float(total),
-                            'gst_rate': 0,  # Default GST rate
-                            'gst_amount': 0,
-                            'taxable_value': float(total),
+                            'unit_price': float(taxable_value),  # Use taxable value
+                            'line_total': float(taxable_value),  # Use taxable value
+                            'gst_rate': float(gst_rate),
+                            'gst_amount': float(item_gst_total),
+                            'taxable_value': float(taxable_value),
                         })
                         
-                        total_amount += total
-                        created_items.append(product_name)
+                        total_amount += line_total  # Add line total (which includes GST if applicable)
+                        created_items.append(product_name or variant.variant_name if variant else 'Unknown')
                 
                 if not sale_items:
                     skipped.append({
