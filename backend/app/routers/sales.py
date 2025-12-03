@@ -267,39 +267,78 @@ async def import_sales_from_excel(
     try:
         # Read Excel file
         contents = await file.read()
-        df = pd.read_excel(io.BytesIO(contents))
+        
+        # Try reading with header in row 3 (for Paytm POS format)
+        # First try row 3, then fallback to row 0
+        df = None
+        header_row = None
+        
+        for row_num in [2, 0]:  # Try row 3 (0-indexed = 2), then row 1 (0-indexed = 0)
+            try:
+                df = pd.read_excel(io.BytesIO(contents), header=row_num)
+                # Check if we got meaningful column names
+                if df.columns.tolist() and not all('unnamed' in str(col).lower() for col in df.columns):
+                    header_row = row_num
+                    break
+            except:
+                continue
+        
+        # If still no good header, try reading without header and manually set
+        if df is None or all('unnamed' in str(col).lower() for col in df.columns):
+            df = pd.read_excel(io.BytesIO(contents), header=None)
+            # Try to find header row by checking first few rows
+            for row_idx in range(min(5, len(df))):
+                row_values = df.iloc[row_idx].astype(str).str.lower().tolist()
+                # Check if this row looks like headers (contains common header words)
+                header_keywords = ['date', 'invoice', 'item', 'quantity', 'price', 'amount']
+                if any(keyword in ' '.join(row_values) for keyword in header_keywords):
+                    df.columns = df.iloc[row_idx]
+                    df = df.iloc[row_idx + 1:].reset_index(drop=True)
+                    break
         
         if df.empty:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Excel file is empty"
+                detail="Excel file is empty or could not be parsed"
             )
         
-        # Normalize column names (case-insensitive, remove spaces)
-        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+        # Normalize column names (case-insensitive, remove spaces, handle special chars)
+        df.columns = df.columns.astype(str).str.strip().str.lower().str.replace(' ', '_').str.replace('.', '').str.replace('/', '_').str.replace('\\', '_')
         
-        logger.info(f"Importing sales from Excel file: {file.filename}, {len(df)} rows")
+        # Remove rows that are completely empty or have all NaN values
+        df = df.dropna(how='all')
         
-        # Map common column name variations
+        logger.info(f"Importing sales from Excel file: {file.filename}, {len(df)} rows, columns: {list(df.columns)}")
+        
+        # Map common column name variations (including Paytm POS specific)
         column_mapping = {
-            'invoice_number': ['invoice_number', 'invoice_no', 'invoice', 'invoice_id', 'bill_no'],
+            'invoice_number': ['invoice_number', 'invoice_no', 'invoice', 'invoice_id', 'bill_no', 'invoice_no_txn_no', 'txn_no', 'invoice_no_txn_no'],
             'date': ['date', 'invoice_date', 'transaction_date', 'sale_date', 'bill_date'],
             'time': ['time', 'invoice_time', 'transaction_time', 'sale_time'],
             'product_name': ['product_name', 'item_name', 'product', 'item', 'description'],
             'sku': ['sku', 'product_code', 'barcode', 'code', 'item_code'],
-            'quantity': ['quantity', 'qty', 'qty.', 'amount'],
-            'price': ['price', 'unit_price', 'rate', 'unit_rate'],
+            'quantity': ['quantity', 'qty', 'qty.', 'count'],
+            'price': ['price', 'unit_price', 'rate', 'unit_rate', 'unitprice'],
             'total': ['total', 'amount', 'line_total', 'item_total'],
-            'payment_method': ['payment_method', 'payment_type', 'payment', 'pay_mode'],
-            'customer': ['customer', 'customer_name', 'customer_id']
+            'payment_method': ['payment_method', 'payment_type', 'payment', 'pay_mode', 'transaction_type'],
+            'customer': ['customer', 'customer_name', 'customer_id', 'party_name']
         }
         
-        # Find actual column names
+        # Find actual column names (fuzzy matching for variations)
         actual_columns = {}
         for key, variations in column_mapping.items():
             for col in df.columns:
-                if col in variations:
+                col_normalized = col.lower().strip()
+                # Exact match
+                if col_normalized in variations:
                     actual_columns[key] = col
+                    break
+                # Partial match (for cases like "invoice_no_txn_no")
+                for variation in variations:
+                    if variation.replace('_', '') in col_normalized.replace('_', '') or col_normalized.replace('_', '') in variation.replace('_', ''):
+                        actual_columns[key] = col
+                        break
+                if key in actual_columns:
                     break
         
         # Validate required columns
@@ -453,21 +492,32 @@ async def import_sales_from_excel(
                     continue
                 
                 # Calculate payment breakdown
+                # Check Party Name for payment hints (e.g., "Cash Sale")
+                party_name = None
+                if 'customer' in actual_columns:
+                    party_name = str(rows[0][actual_columns['customer']]).strip().lower() if rows[0][actual_columns['customer']] else None
+                
                 amount_cash = Decimal(0)
                 amount_upi = Decimal(0)
                 amount_card = Decimal(0)
                 amount_credit = Decimal(0)
                 
+                # Determine payment method from Transaction Type or Party Name
+                payment_hint = None
                 if payment_method:
-                    if 'cash' in payment_method:
+                    payment_hint = payment_method
+                elif party_name:
+                    payment_hint = party_name
+                
+                if payment_hint:
+                    if 'cash' in payment_hint or 'cash sale' in payment_hint:
                         amount_cash = total_amount
-                    elif 'upi' in payment_method or 'paytm' in payment_method:
+                    elif 'upi' in payment_hint or 'paytm' in payment_hint:
                         amount_upi = total_amount
-                    elif 'card' in payment_method or 'debit' in payment_method or 'credit' in payment_method:
-                        if 'credit' in payment_method:
-                            amount_credit = total_amount
-                        else:
-                            amount_card = total_amount
+                    elif 'card' in payment_hint or 'debit' in payment_hint:
+                        amount_card = total_amount
+                    elif 'credit' in payment_hint:
+                        amount_credit = total_amount
                     else:
                         # Default to cash if unknown
                         amount_cash = total_amount
