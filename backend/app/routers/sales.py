@@ -230,6 +230,12 @@ async def list_sales(
     result = await db.execute(query)
     sales = result.scalars().unique().all()
     
+    # Populate product_name on product_variants for proper serialization
+    for sale in sales:
+        for item in sale.items:
+            if item.product_variant and item.product_variant.product:
+                item.product_variant.product_name = item.product_variant.product.name
+    
     return sales
 
 

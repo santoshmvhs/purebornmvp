@@ -17,13 +17,28 @@ export interface Product {
 }
 
 export interface SaleItem {
-  id: number;
-  sale_id: number;
-  product_id: number;
+  id: string; // UUID
+  sale_id: string; // UUID
+  product_variant_id: string; // UUID
   quantity: number;
   unit_price: number;
   line_total: number;
-  line_tax: number;
+  gst_rate?: number;
+  gst_amount?: number;
+  taxable_value?: number;
+  product_variant?: {
+    id: string;
+    product_id: string;
+    variant_name: string;
+    product_name?: string;
+    product?: {
+      id: string;
+      name: string;
+    };
+  };
+  // Legacy fields for backward compatibility
+  product_id?: number;
+  line_tax?: number;
   product?: Product;
 }
 

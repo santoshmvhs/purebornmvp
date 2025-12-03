@@ -586,6 +586,11 @@ class SaleItemNewRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SaleItemNewWithVariant(SaleItemNewRead):
+    product_variant: ProductVariantRead
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SaleNewCreate(BaseModel):
     invoice_number: Optional[str] = None
     invoice_date: date
@@ -624,7 +629,7 @@ class SaleNewRead(BaseModel):
 
 
 class SaleNewWithItems(SaleNewRead):
-    items: List[SaleItemNewRead]
+    items: List[SaleItemNewWithVariant]
     customer: Optional[CustomerNewRead] = None
     model_config = ConfigDict(from_attributes=True)
 
