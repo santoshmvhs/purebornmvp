@@ -260,17 +260,30 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
             print(f"Using default product variant: {default_variant.variant_name} (ID: {default_variant.id})")
         
         # Group rows by invoice number (for line item format) or process individually (for summary format)
+        print("Grouping invoices...")
         if summary_format:
-            # Each row is a separate sale
-            invoices = {str(i): [row] for i, row in df.iterrows()}
+            # Each row is a separate sale - use invoice_id from the row
+            invoices = {}
+            for i, row in df.iterrows():
+                # Try to get invoice_id from the row, otherwise use index
+                if 'invoice_id' in actual_columns:
+                    invoice_num = str(row[actual_columns['invoice_id']]).strip()
+                    if invoice_num and invoice_num.lower() != 'nan':
+                        invoices[invoice_num] = [row]
+                    else:
+                        invoices[f"ROW_{i}"] = [row]
+                else:
+                    invoices[f"ROW_{i}"] = [row]
         else:
             # Group rows by invoice number
             invoices = defaultdict(list)
             for _, row in df.iterrows():
                 invoice_num = str(row[actual_columns['invoice_number']]).strip()
                 invoices[invoice_num].append(row)
+        print(f"Grouped into {len(invoices)} invoices")
         
         print(f"Found {len(invoices)} unique invoices/sales")
+        print(f"Starting import...\n")
         
         # Process each invoice
         created_sales = []
@@ -278,7 +291,13 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
         skipped = []
         created_items = []
         
+        total_invoices = len(invoices)
+        processed = 0
+        
         for invoice_num, rows in invoices.items():
+            processed += 1
+            if processed % 50 == 0:
+                print(f"Progress: {processed}/{total_invoices} invoices processed...")
             try:
                 # Get invoice date (use first row's date)
                 date_val = rows[0][actual_columns['date']]
@@ -706,6 +725,7 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                     )
                     db.add(sale_item)
                 
+                # Commit every sale individually to avoid memory issues
                 await db.commit()
                 await db.refresh(sale)
                 created_sales.append({
@@ -714,7 +734,8 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                     'items_count': len(sale_items),
                     'total_amount': float(sale.total_amount),
                 })
-                print(f"  Created sale: Invoice {sale.invoice_number} ({len(sale_items)} items, ₹{sale.total_amount:.2f})")
+                if len(created_sales) % 50 == 0:
+                    print(f"  ✓ Processed {len(created_sales)} sales...")
                 
             except Exception as e:
                 await db.rollback()
@@ -722,6 +743,10 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                 logger.error(error_msg, exc_info=True)
                 errors.append(error_msg)
                 print(f"  Error processing invoice {invoice_num}: {e}")
+        
+        # Final commit for any remaining items
+        await db.commit()
+        print(f"\n  Final commit completed. Total processed: {len(created_sales)} sales")
         
         print("\n" + "=" * 60)
         print("Import Summary:")
@@ -778,17 +803,28 @@ if __name__ == "__main__":
         
         engine = create_async_engine(
             db_url,
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
             connect_args={"statement_cache_size": 0} if "asyncpg" in db_url else {}
         )
         async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         
         try:
             async with async_session() as db:
+                print("Connected to database successfully")
                 if args.delete_first:
                     await delete_all_sales(db)
+                print("Starting import...")
                 await import_sales_from_excel(file_path, db)
+                print("Import completed successfully")
+        except Exception as e:
+            print(f"Error during import: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             await engine.dispose()
+            print("Database connection closed")
     
     try:
         asyncio.run(run_import())
