@@ -115,7 +115,7 @@ export const authApi = {
 
 // Products API
 export const productsApi = {
-  getAll: async (params?: { search?: string; page?: number; limit?: number; active_only?: boolean }) => {
+  getAll: async (params?: { search?: string; category_id?: string; page?: number; limit?: number; active_only?: boolean }) => {
     const response = await api.get('/products', { params });
     return response.data;
   },
@@ -143,7 +143,7 @@ export const productsApi = {
 
 // Product Variants API
 export const productVariantsApi = {
-  getAll: async (params?: { product_id?: string; active_only?: boolean }) => {
+  getAll: async (params?: { product_id?: string; limit?: number; active_only?: boolean }) => {
     const response = await api.get('/product-variants', { params });
     return response.data;
   },
@@ -165,6 +165,17 @@ export const productVariantsApi = {
   
   delete: async (id: string) => {
     const response = await api.delete(`/product-variants/${id}`);
+    return response.data;
+  },
+};
+
+export const productCategoriesApi = {
+  getAll: async () => {
+    const response = await api.get('/product-categories');
+    return response.data;
+  },
+  create: async (data: { name: string }) => {
+    const response = await api.post('/product-categories', data);
     return response.data;
   },
 };

@@ -106,6 +106,7 @@ class ProductRead(ProductBase):
     id: UUID
     is_active: bool
     created_at: datetime
+    category_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

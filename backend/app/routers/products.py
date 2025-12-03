@@ -4,6 +4,7 @@ Products router for CRUD operations on products.
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
 
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/products", tags=["Products"])
 @router.get("", response_model=List[ProductRead])
 async def list_products(
     search: Optional[str] = Query(None, description="Search by name or product code"),
+    category_id: Optional[UUID] = Query(None, description="Filter by category ID"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=1000, description="Items per page"),
     active_only: bool = Query(True, description="Show only active products"),
@@ -27,11 +29,14 @@ async def list_products(
     """
     List all products with optional search and pagination.
     """
-    stmt = select(Product)
+    stmt = select(Product).options(selectinload(Product.category))
     
     # Filter by active status
     if active_only:
         stmt = stmt.where(Product.is_active == True)
+
+    if category_id:
+        stmt = stmt.where(Product.category_id == category_id)
     
     # Search filter
     if search:
@@ -49,6 +54,13 @@ async def list_products(
     
     result = await db.execute(stmt)
     products = result.scalars().unique().all()
+    
+    # Attach category names for serialization
+    for product in products:
+        if product.category:
+            product.category_name = product.category.name
+        else:
+            product.category_name = None
     
     return products
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { productsApi, productVariantsApi } from '@/lib/api';
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from '@/components/ui/select';
+import { productsApi, productVariantsApi, productCategoriesApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { Plus, Search, Edit, Trash2, Package } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
@@ -20,6 +27,7 @@ interface Product {
   base_unit: string;
   hsn_code: string;
   category_id?: string | null;
+  category_name?: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -39,13 +47,24 @@ interface ProductVariant {
   created_at: string;
 }
 
+interface ProductCategory {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<Record<string, ProductVariant[]>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [variantDialogOpen, setVariantDialogOpen] = useState(false);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -56,6 +75,7 @@ export default function ProductsPage() {
     product_code: '',
     base_unit: '',
     hsn_code: '',
+    category_id: 'none',
   });
 
   const [variantFormData, setVariantFormData] = useState({
@@ -69,13 +89,29 @@ export default function ProductsPage() {
     channel: '',
   });
 
+  const categoryNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    categories.forEach((category) => {
+      map[category.id] = category.name;
+    });
+    return map;
+  }, [categories]);
+
   useEffect(() => {
     loadProducts();
-  }, [search]);
+  }, [search, categoryFilter]);
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
 
   const loadProducts = async () => {
     try {
-      const data = await productsApi.getAll({ search, limit: 100 });
+      const params: Record<string, any> = { search, limit: 100 };
+      if (categoryFilter !== 'all') {
+        params.category_id = categoryFilter;
+      }
+      const data = await productsApi.getAll(params);
       setProducts(data);
       // Load variants for all products
       for (const product of data) {
@@ -97,6 +133,41 @@ export default function ProductsPage() {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const data = await productCategoriesApi.getAll();
+      setCategories(data || []);
+    } catch (error) {
+      logger.error('Failed to load product categories:', error);
+    }
+  };
+
+  const handleCategorySelect = (value: string) => {
+    setProductFormData((prev) => ({ ...prev, category_id: value }));
+  };
+
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) {
+      alert('Category name is required');
+      return;
+    }
+
+    setCreatingCategory(true);
+    try {
+      const category = await productCategoriesApi.create({ name: newCategoryName.trim() });
+      await loadCategories();
+      setCategoryDialogOpen(false);
+      setNewCategoryName('');
+      setProductFormData((prev) => ({ ...prev, category_id: category.id }));
+    } catch (error: any) {
+      logger.error('Failed to create category:', error);
+      alert(error.response?.data?.detail || 'Failed to create category');
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -105,6 +176,7 @@ export default function ProductsPage() {
         product_code: productFormData.product_code || undefined,
         base_unit: productFormData.base_unit,
         hsn_code: productFormData.hsn_code,
+        category_id: productFormData.category_id !== 'none' ? productFormData.category_id : undefined,
       };
 
       if (editingProduct) {
@@ -161,6 +233,7 @@ export default function ProductsPage() {
       product_code: product.product_code || '',
       base_unit: product.base_unit,
       hsn_code: product.hsn_code,
+      category_id: product.category_id || 'none',
     });
     setProductDialogOpen(true);
   };
@@ -216,6 +289,7 @@ export default function ProductsPage() {
       product_code: '',
       base_unit: '',
       hsn_code: '',
+      category_id: 'none',
     });
   };
 
@@ -239,7 +313,8 @@ export default function ProductsPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Products</h1>
@@ -284,6 +359,35 @@ export default function ProductsPage() {
                     onChange={(e) => setProductFormData({ ...productFormData, product_code: e.target.value })}
                     placeholder="e.g., PROD-001"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={productFormData.category_id}
+                      onValueChange={handleCategorySelect}
+                    >
+                      <SelectTrigger id="category">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Category</SelectItem>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCategoryDialogOpen(true)}
+                    >
+                      Add
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -332,6 +436,19 @@ export default function ProductsPage() {
                 className="pl-10"
               />
             </div>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent>
@@ -356,6 +473,9 @@ export default function ProductsPage() {
                       </div>
                       <div className="text-sm text-muted-foreground mt-1">
                         Base Unit: {product.base_unit} | HSN: {product.hsn_code}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Category: {product.category_name || (product.category_id ? categoryNameMap[product.category_id] : null) || 'No category'}
                       </div>
                     </div>
                     {isAdmin && (
@@ -566,6 +686,36 @@ export default function ProductsPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+
+      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Product Category</DialogTitle>
+            <DialogDescription>Create a new category to organize your products.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateCategory} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-category-name">Category Name</Label>
+              <Input
+                id="new-category-name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="e.g., Oils, Accessories"
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCategoryDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creatingCategory}>
+                {creatingCategory ? 'Creating...' : 'Create'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
