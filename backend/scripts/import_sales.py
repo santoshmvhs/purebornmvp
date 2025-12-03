@@ -139,18 +139,41 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
         print(f"Found {len(df)} rows")
         print(f"Columns: {list(df.columns)}")
         
-        # Map common column name variations (including Paytm POS specific)
+        # Map common column name variations (including Paytm POS and May'23 format)
         column_mapping = {
-            'invoice_number': ['invoice_number', 'invoice_no', 'invoice', 'invoice_id', 'bill_no', 'invoice_no_txn_no', 'txn_no'],
+            'invoice_number': ['invoice_number', 'invoice_no', 'invoice', 'invoice_id', 'bill_no', 'invoice_no_txn_no', 'txn_no', 'invoice_id'],
             'date': ['date', 'invoice_date', 'transaction_date', 'sale_date', 'bill_date'],
             'time': ['time', 'invoice_time', 'transaction_time', 'sale_time'],
+            'employee': ['employee', 'employee_name', 'cashier', 'user'],
+            'partner_ref_id': ['partner_ref_id', 'partner_ref', 'ref_id'],
+            'channel': ['channel', 'sales_channel', 'saleschannel'],
+            'sub_total': ['sub_total', 'subtotal', 'total_amount', 'amount'],
+            'charges': ['charges'],
+            'charges_discount': ['charges_discount', 'chargesdiscount'],
+            'discounts': ['discounts', 'discount', 'discount_amount'],
+            'sgst': ['sgst', 'sgst_amount'],
+            'cgst': ['cgst', 'cgst_amount'],
+            'grand_total': ['grand_total', 'grandtotal', 'net_amount', 'total'],
+            'status': ['status'],
+            'round_off': ['roundoff', 'round_off'],
+            'credit_line': ['credit_line', 'creditline', 'amount_credit'],
+            'cash': ['cash', 'amount_cash'],
+            'card': ['card', 'amount_card'],
+            'upi': ['upi', 'amount_upi'],
+            'payment_ref_mode': ['payment_ref_mode', 'paymentrefmode'],
+            'transaction_ref_id': ['transaction_ref_id', 'transactionrefid'],
+            'customer_name': ['customer_name', 'customer', 'party_name'],
+            'customer_phone': ['customer_phone', 'customerphone', 'party_phone_no'],
+            'customer_email': ['customer_email', 'customeremail'],
+            'customer_address': ['customer_address', 'customeraddress'],
+            'comments': ['comments', 'remarks', 'description'],
+            # Line item format fields
             'product_name': ['product_name', 'item_name', 'product', 'item', 'description'],
             'sku': ['sku', 'product_code', 'barcode', 'code', 'item_code'],
             'quantity': ['quantity', 'qty', 'qty.', 'count'],
             'price': ['price', 'unit_price', 'rate', 'unit_rate', 'unitprice'],
             'total': ['total', 'amount', 'line_total', 'item_total'],
             'payment_method': ['payment_method', 'payment_type', 'payment', 'pay_mode', 'transaction_type'],
-            'customer': ['customer', 'customer_name', 'customer_id', 'party_name']
         }
         
         # Find actual column names (fuzzy matching for variations)
@@ -172,12 +195,23 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
         
         # Check if this is a summary format (one row per sale) or line item format
         has_line_items = 'quantity' in actual_columns and 'price' in actual_columns
-        has_total_amount = 'total' in actual_columns
+        has_total_amount = 'total' in actual_columns or 'grand_total' in actual_columns or 'sub_total' in actual_columns
         
         if not has_line_items and has_total_amount:
             # Summary format - each row is a complete sale
             print("Detected summary format (one row per sale)")
-            required = ['invoice_number', 'date', 'total']
+            # Check for either grand_total, total, or sub_total
+            if 'grand_total' in actual_columns:
+                total_col = 'grand_total'
+            elif 'total' in actual_columns:
+                total_col = 'total'
+            elif 'sub_total' in actual_columns:
+                total_col = 'sub_total'
+            else:
+                print(f"Error: Could not find total amount column. Found columns: {list(df.columns)}")
+                return
+            
+            required = ['invoice_number', 'date', total_col]
             missing = [col for col in required if col not in actual_columns]
             if missing:
                 print(f"Error: Missing required columns: {missing}")
@@ -308,7 +342,20 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                     # Summary format: one row = one sale with total amount
                     row = rows[0]
                     try:
-                        total_amount = Decimal(str(row[actual_columns['total']]))
+                        # Determine which total column to use
+                        if 'grand_total' in actual_columns:
+                            total_col = actual_columns['grand_total']
+                        elif 'total' in actual_columns:
+                            total_col = actual_columns['total']
+                        elif 'sub_total' in actual_columns:
+                            total_col = actual_columns['sub_total']
+                        else:
+                            raise ValueError("No total amount column found")
+                        
+                        total_val = row[total_col]
+                        if pd.isna(total_val):
+                            raise ValueError(f"Total amount is NaN in column {total_col}")
+                        total_amount = Decimal(str(total_val))
                         
                         # Use default variant or create a generic sale item
                         if default_variant:
@@ -403,42 +450,214 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                     })
                     continue
                 
-                # Calculate payment breakdown
-                # Check Party Name for payment hints (e.g., "Cash Sale")
-                party_name = None
-                if 'customer' in actual_columns:
-                    party_name = str(rows[0][actual_columns['customer']]).strip().lower() if rows[0][actual_columns['customer']] else None
+                # Extract additional fields for May'23 format
+                row = rows[0]
                 
+                # Get employee
+                employee = None
+                if 'employee' in actual_columns:
+                    emp_val = row[actual_columns['employee']]
+                    if emp_val and not pd.isna(emp_val):
+                        employee = str(emp_val).strip()
+                
+                # Get partner_ref_id
+                partner_ref_id = None
+                if 'partner_ref_id' in actual_columns:
+                    ref_val = row[actual_columns['partner_ref_id']]
+                    if ref_val and not pd.isna(ref_val):
+                        partner_ref_id = str(ref_val).strip()
+                
+                # Get channel
+                channel = 'store'
+                if 'channel' in actual_columns:
+                    ch_val = row[actual_columns['channel']]
+                    if ch_val and not pd.isna(ch_val):
+                        channel = str(ch_val).strip().lower()
+                        if 'in store' in channel.lower():
+                            channel = 'store'
+                        elif 'online' in channel.lower():
+                            channel = 'online'
+                
+                # Get sub_total (or use total_amount if sub_total not available)
+                sub_total = total_amount
+                if 'sub_total' in actual_columns:
+                    sub_val = row[actual_columns['sub_total']]
+                    if sub_val and not pd.isna(sub_val):
+                        sub_total = Decimal(str(sub_val))
+                
+                # Get charges and charges_discount
+                charges = Decimal(0)
+                if 'charges' in actual_columns:
+                    chg_val = row[actual_columns['charges']]
+                    if chg_val and not pd.isna(chg_val):
+                        charges = Decimal(str(chg_val))
+                
+                charges_discount = Decimal(0)
+                if 'charges_discount' in actual_columns:
+                    chg_disc_val = row[actual_columns['charges_discount']]
+                    if chg_disc_val and not pd.isna(chg_disc_val):
+                        charges_discount = Decimal(str(chg_disc_val))
+                
+                # Get discounts
+                discount_amount = Decimal(0)
+                if 'discounts' in actual_columns:
+                    disc_val = row[actual_columns['discounts']]
+                    if disc_val and not pd.isna(disc_val):
+                        discount_amount = Decimal(str(disc_val))
+                
+                # Get CGST and SGST amounts
+                cgst_amount = Decimal(0)
+                if 'cgst' in actual_columns:
+                    cgst_val = row[actual_columns['cgst']]
+                    if cgst_val and not pd.isna(cgst_val):
+                        cgst_amount = Decimal(str(cgst_val))
+                
+                sgst_amount = Decimal(0)
+                if 'sgst' in actual_columns:
+                    sgst_val = row[actual_columns['sgst']]
+                    if sgst_val and not pd.isna(sgst_val):
+                        sgst_amount = Decimal(str(sgst_val))
+                
+                # Calculate total tax
+                tax_amount = cgst_amount + sgst_amount
+                
+                # Get grand_total (or use total_amount)
+                grand_total = total_amount
+                if 'grand_total' in actual_columns:
+                    gt_val = row[actual_columns['grand_total']]
+                    if gt_val and not pd.isna(gt_val):
+                        grand_total = Decimal(str(gt_val))
+                
+                # Get round_off
+                round_off = Decimal(0)
+                if 'round_off' in actual_columns:
+                    ro_val = row[actual_columns['round_off']]
+                    if ro_val and not pd.isna(ro_val):
+                        round_off = Decimal(str(ro_val))
+                
+                # Get status
+                status = 'Sales'
+                if 'status' in actual_columns:
+                    status_val = row[actual_columns['status']]
+                    if status_val and not pd.isna(status_val):
+                        status = str(status_val).strip()
+                
+                # Get payment amounts from Cash, Card, UPI columns
                 amount_cash = Decimal(0)
-                amount_upi = Decimal(0)
+                if 'cash' in actual_columns:
+                    cash_val = row[actual_columns['cash']]
+                    if cash_val and not pd.isna(cash_val):
+                        amount_cash = Decimal(str(cash_val))
+                
                 amount_card = Decimal(0)
+                if 'card' in actual_columns:
+                    card_val = row[actual_columns['card']]
+                    if card_val and not pd.isna(card_val):
+                        amount_card = Decimal(str(card_val))
+                
+                amount_upi = Decimal(0)
+                if 'upi' in actual_columns:
+                    upi_val = row[actual_columns['upi']]
+                    if upi_val and not pd.isna(upi_val):
+                        amount_upi = Decimal(str(upi_val))
+                
                 amount_credit = Decimal(0)
+                if 'credit_line' in actual_columns:
+                    credit_val = row[actual_columns['credit_line']]
+                    if credit_val and not pd.isna(credit_val):
+                        amount_credit = Decimal(str(credit_val))
                 
-                # Determine payment method from Transaction Type or Party Name
-                payment_hint = None
-                if payment_method:
-                    payment_hint = payment_method
-                elif party_name:
-                    payment_hint = party_name
+                # Get payment_ref_mode and transaction_ref_id
+                payment_ref_mode = None
+                if 'payment_ref_mode' in actual_columns:
+                    prm_val = row[actual_columns['payment_ref_mode']]
+                    if prm_val and not pd.isna(prm_val):
+                        payment_ref_mode = str(prm_val).strip()
                 
-                if payment_hint:
-                    if 'cash' in payment_hint or 'cash sale' in payment_hint:
-                        amount_cash = total_amount
-                    elif 'upi' in payment_hint or 'paytm' in payment_hint:
-                        amount_upi = total_amount
-                    elif 'card' in payment_hint or 'debit' in payment_hint:
-                        amount_card = total_amount
-                    elif 'credit' in payment_hint:
-                        amount_credit = total_amount
+                transaction_ref_id = None
+                if 'transaction_ref_id' in actual_columns:
+                    trid_val = row[actual_columns['transaction_ref_id']]
+                    if trid_val and not pd.isna(trid_val):
+                        transaction_ref_id = str(trid_val).strip()
+                
+                # Get customer information and create/find customer
+                customer_name = None
+                customer_phone = None
+                customer_email = None
+                customer_address = None
+                
+                if 'customer_name' in actual_columns:
+                    cust_name_val = row[actual_columns['customer_name']]
+                    if cust_name_val and not pd.isna(cust_name_val):
+                        customer_name = str(cust_name_val).strip()
+                
+                if 'customer_phone' in actual_columns:
+                    cust_phone_val = row[actual_columns['customer_phone']]
+                    if cust_phone_val and not pd.isna(cust_phone_val):
+                        customer_phone = str(cust_phone_val).strip()
+                
+                if 'customer_email' in actual_columns:
+                    cust_email_val = row[actual_columns['customer_email']]
+                    if cust_email_val and not pd.isna(cust_email_val):
+                        customer_email = str(cust_email_val).strip()
+                
+                if 'customer_address' in actual_columns:
+                    cust_addr_val = row[actual_columns['customer_address']]
+                    if cust_addr_val and not pd.isna(cust_addr_val):
+                        customer_address = str(cust_addr_val).strip()
+                
+                # Find or create customer if name or phone provided
+                from app.models import Customer
+                if customer_name and customer_name.lower() != 'cash sale' and customer_name.lower() != 'nan':
+                    # Try to find existing customer by name or phone
+                    if customer_phone:
+                        result = await db.execute(
+                            select(Customer).where(
+                                (Customer.name.ilike(f"%{customer_name}%")) |
+                                (Customer.phone == customer_phone)
+                            ).limit(1)
+                        )
                     else:
-                        # Default to cash if unknown
-                        amount_cash = total_amount
-                else:
-                    # Default to cash
-                    amount_cash = total_amount
+                        result = await db.execute(
+                            select(Customer).where(Customer.name.ilike(f"%{customer_name}%")).limit(1)
+                        )
+                    existing_customer = result.scalar_one_or_none()
+                    
+                    if existing_customer:
+                        customer_id = existing_customer.id
+                        # Update customer info if provided
+                        if customer_phone and not existing_customer.phone:
+                            existing_customer.phone = customer_phone
+                        if customer_email and not existing_customer.email:
+                            existing_customer.email = customer_email
+                        if customer_address and not existing_customer.address:
+                            existing_customer.address = customer_address
+                        await db.flush()
+                    else:
+                        # Create new customer
+                        new_customer = Customer(
+                            name=customer_name,
+                            phone=customer_phone,
+                            email=customer_email,
+                            address=customer_address,
+                            is_active=True
+                        )
+                        db.add(new_customer)
+                        await db.flush()
+                        await db.refresh(new_customer)
+                        customer_id = new_customer.id
+                
+                # Get comments/remarks
+                remarks = f"Imported from Excel: {os.path.basename(file_path)}"
+                if 'comments' in actual_columns:
+                    comments_val = row[actual_columns['comments']]
+                    if comments_val and not pd.isna(comments_val):
+                        comments_str = str(comments_val).strip()
+                        if comments_str and comments_str.lower() != 'nan':
+                            remarks = f"{remarks}. {comments_str}"
                 
                 total_paid = amount_cash + amount_upi + amount_card
-                balance_due = total_amount - total_paid
+                balance_due = grand_total - total_paid
                 
                 # Create sale
                 sale = Sale(
@@ -446,18 +665,29 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                     invoice_date=invoice_date,
                     invoice_time=invoice_time,
                     customer_id=customer_id,
-                    channel='store',  # Paytm POS is typically store sales
-                    total_amount=float(total_amount),
-                    discount_amount=0,
-                    tax_amount=0,
-                    net_amount=float(total_amount),
+                    channel=channel,
+                    employee=employee,
+                    partner_ref_id=partner_ref_id,
+                    total_amount=float(sub_total),
+                    charges=float(charges),
+                    charges_discount=float(charges_discount),
+                    discount_amount=float(discount_amount),
+                    cgst_amount=float(cgst_amount),
+                    sgst_amount=float(sgst_amount),
+                    igst_amount=0,  # Not in this format
+                    tax_amount=float(tax_amount),
+                    round_off=float(round_off) if round_off else None,
+                    net_amount=float(grand_total),
                     amount_cash=float(amount_cash),
                     amount_upi=float(amount_upi),
                     amount_card=float(amount_card),
                     amount_credit=float(amount_credit),
                     total_paid=float(total_paid),
                     balance_due=float(balance_due),
-                    remarks=f"Imported from Excel: {os.path.basename(file_path)}",
+                    payment_ref_mode=payment_ref_mode,
+                    transaction_ref_id=transaction_ref_id,
+                    status=status,
+                    remarks=remarks,
                 )
                 db.add(sale)
                 await db.flush()

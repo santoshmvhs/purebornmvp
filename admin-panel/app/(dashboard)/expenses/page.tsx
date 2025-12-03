@@ -14,10 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { FileText, Plus, Edit, Trash2 } from 'lucide-react';
+import { FileText, Plus, Edit, Trash2, TrendingUp } from 'lucide-react';
 import { expensesApi, vendorsApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 interface Expense {
   id: string;
@@ -74,7 +74,7 @@ export default function ExpensesPage() {
 
   const loadExpenses = async () => {
     try {
-      const data = await expensesApi.getAll({ limit: 100 });
+      const data = await expensesApi.getAll({ limit: 1000 });
       setExpenses(data);
     } catch (error) {
       logger.error('Failed to load expenses:', error);
@@ -182,6 +182,59 @@ export default function ExpensesPage() {
       amount_credit: '',
     });
   };
+
+  // Calculate KPIs
+  const calculateKPIs = () => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+
+    // Total KPIs (all time)
+    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.total_amount, 0);
+    const totalPaid = expenses.reduce((sum, exp) => sum + exp.total_paid, 0);
+    const totalBalance = expenses.reduce((sum, exp) => sum + exp.balance_due, 0);
+    const totalCount = expenses.length;
+
+    // Monthly KPIs (current month)
+    const monthlyExpenses = expenses
+      .filter((exp) => {
+        const expDate = new Date(exp.date);
+        return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
+      })
+      .reduce((sum, exp) => sum + exp.total_amount, 0);
+
+    const monthlyPaid = expenses
+      .filter((exp) => {
+        const expDate = new Date(exp.date);
+        return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
+      })
+      .reduce((sum, exp) => sum + exp.total_paid, 0);
+
+    const monthlyBalance = expenses
+      .filter((exp) => {
+        const expDate = new Date(exp.date);
+        return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
+      })
+      .reduce((sum, exp) => sum + exp.balance_due, 0);
+
+    const monthlyCount = expenses.filter((exp) => {
+      const expDate = new Date(exp.date);
+      return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
+    }).length;
+
+    return {
+      totalExpenses,
+      totalPaid,
+      totalBalance,
+      totalCount,
+      monthlyExpenses,
+      monthlyPaid,
+      monthlyBalance,
+      monthlyCount,
+    };
+  };
+
+  const kpis = calculateKPIs();
 
   if (loading) {
     return (
@@ -346,6 +399,76 @@ export default function ExpensesPage() {
             </form>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* KPIs Section */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <TrendingUp className="h-5 w-5" />
+          Expense Overview
+        </h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{kpis.totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">{kpis.totalCount} expenses</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Expenses</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{kpis.monthlyExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">{kpis.monthlyCount} expenses this month</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Paid</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-400">₹{kpis.monthlyPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">This month</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Balance Due</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${kpis.monthlyBalance > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+                ₹{kpis.monthlyBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">This month</p>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2 mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Paid</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-400">₹{kpis.totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">All time</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Balance Due</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${kpis.totalBalance > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+                ₹{kpis.totalBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Outstanding</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Card>

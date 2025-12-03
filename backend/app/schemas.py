@@ -613,9 +613,17 @@ class SaleNewRead(BaseModel):
     invoice_time: Optional[time]
     customer_id: Optional[UUID]
     channel: Optional[str]
+    employee: Optional[str] = None
+    partner_ref_id: Optional[str] = None
     total_amount: float
+    charges: float = 0
+    charges_discount: float = 0
     discount_amount: float
+    cgst_amount: float = 0
+    sgst_amount: float = 0
+    igst_amount: float = 0
     tax_amount: float
+    round_off: Optional[float] = None
     net_amount: float
     amount_cash: float
     amount_upi: float
@@ -623,6 +631,9 @@ class SaleNewRead(BaseModel):
     amount_credit: float
     total_paid: float
     balance_due: float
+    payment_ref_mode: Optional[str] = None
+    transaction_ref_id: Optional[str] = None
+    status: Optional[str] = None
     remarks: Optional[str]
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)

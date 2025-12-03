@@ -234,17 +234,28 @@ class Sale(Base):
     invoice_time = Column(Time, nullable=True)
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers_new.id", ondelete="RESTRICT"), nullable=True)
     channel = Column(Text, nullable=True)  # 'store', 'online'
-    total_amount = Column(Numeric(14, 2), nullable=False, default=0)
-    discount_amount = Column(Numeric(14, 2), nullable=False, default=0)
-    tax_amount = Column(Numeric(14, 2), nullable=False, default=0)
-    net_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    employee = Column(Text, nullable=True)  # Employee name who made the sale
+    partner_ref_id = Column(Text, nullable=True)  # Partner reference ID
+    total_amount = Column(Numeric(14, 2), nullable=False, default=0)  # Sub Total
+    charges = Column(Numeric(14, 2), nullable=False, default=0)  # Additional charges
+    charges_discount = Column(Numeric(14, 2), nullable=False, default=0)  # Discount on charges
+    discount_amount = Column(Numeric(14, 2), nullable=False, default=0)  # Discounts
+    cgst_amount = Column(Numeric(14, 2), nullable=False, default=0)  # CGST amount
+    sgst_amount = Column(Numeric(14, 2), nullable=False, default=0)  # SGST amount
+    igst_amount = Column(Numeric(14, 2), nullable=False, default=0)  # IGST amount (for interstate)
+    tax_amount = Column(Numeric(14, 2), nullable=False, default=0)  # Total tax (CGST + SGST + IGST)
+    round_off = Column(Numeric(14, 2), nullable=True, default=0)  # Round off amount
+    net_amount = Column(Numeric(14, 2), nullable=False, default=0)  # Grand Total
     amount_cash = Column(Numeric(14, 2), nullable=False, default=0)
     amount_upi = Column(Numeric(14, 2), nullable=False, default=0)
     amount_card = Column(Numeric(14, 2), nullable=False, default=0)
     amount_credit = Column(Numeric(14, 2), nullable=False, default=0)
     total_paid = Column(Numeric(14, 2), nullable=False, default=0)
     balance_due = Column(Numeric(14, 2), nullable=False, default=0)
-    remarks = Column(Text, nullable=True)
+    payment_ref_mode = Column(Text, nullable=True)  # Payment reference mode
+    transaction_ref_id = Column(Text, nullable=True)  # Transaction reference ID
+    status = Column(Text, nullable=True)  # Sale status (e.g., 'Sales', 'Return', etc.)
+    remarks = Column(Text, nullable=True)  # Comments
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     # Relationships
