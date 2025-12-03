@@ -361,39 +361,68 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                     # Summary format: one row = one sale with total amount
                     row = rows[0]
                     try:
-                        # Determine which total column to use
-                        if 'grand_total' in actual_columns:
-                            total_col = actual_columns['grand_total']
-                        elif 'total' in actual_columns:
-                            total_col = actual_columns['total']
-                        elif 'sub_total' in actual_columns:
-                            total_col = actual_columns['sub_total']
-                        else:
-                            raise ValueError("No total amount column found")
+                        # Get sub_total (taxable value before GST)
+                        sub_total = Decimal(0)
+                        if 'sub_total' in actual_columns:
+                            sub_val = row[actual_columns['sub_total']]
+                            if sub_val and not pd.isna(sub_val):
+                                sub_total = Decimal(str(sub_val))
                         
-                        total_val = row[total_col]
-                        if pd.isna(total_val):
-                            raise ValueError(f"Total amount is NaN in column {total_col}")
-                        total_amount = Decimal(str(total_val))
+                        # Get CGST and SGST amounts
+                        cgst_amount = Decimal(0)
+                        if 'cgst' in actual_columns:
+                            cgst_val = row[actual_columns['cgst']]
+                            if cgst_val and not pd.isna(cgst_val):
+                                cgst_amount = Decimal(str(cgst_val))
+                        
+                        sgst_amount = Decimal(0)
+                        if 'sgst' in actual_columns:
+                            sgst_val = row[actual_columns['sgst']]
+                            if sgst_val and not pd.isna(sgst_val):
+                                sgst_amount = Decimal(str(sgst_val))
+                        
+                        # Calculate total GST
+                        total_gst = cgst_amount + sgst_amount
+                        
+                        # Calculate taxable value (sub_total minus GST if GST-inclusive, or use sub_total if GST-exclusive)
+                        # In May'23 format, Grand Total = Sub Total, so GST is included in Sub Total
+                        # Taxable value = Sub Total / (1 + GST rate)
+                        # But we have GST amounts, so: Taxable value = Sub Total - Total GST (if GST-inclusive)
+                        # Or: Taxable value = Sub Total (if GST-exclusive)
+                        # Based on the data pattern, it seems Sub Total includes GST, so:
+                        taxable_value = sub_total - total_gst if total_gst > 0 else sub_total
+                        
+                        # Calculate GST rate from amounts
+                        gst_rate = Decimal(0)
+                        if taxable_value > 0 and total_gst > 0:
+                            # GST rate = (Total GST / Taxable Value) * 100
+                            gst_rate = (total_gst / taxable_value) * 100
+                        
+                        # Use taxable_value as the base amount
+                        if taxable_value <= 0:
+                            taxable_value = sub_total  # Fallback to sub_total if calculation fails
                         
                         # Use default variant or create a generic sale item
                         if default_variant:
                             sale_items.append({
                                 'product_variant_id': default_variant.id,
                                 'quantity': 1.0,  # Default quantity
-                                'unit_price': float(total_amount),
-                                'line_total': float(total_amount),
-                                'gst_rate': 0,
-                                'gst_amount': 0,
-                                'taxable_value': float(total_amount),
+                                'unit_price': float(taxable_value),  # Use taxable value as unit price
+                                'line_total': float(taxable_value),  # Use taxable value as line total
+                                'gst_rate': float(gst_rate),
+                                'gst_amount': float(total_gst),
+                                'taxable_value': float(taxable_value),
                             })
-                            created_items.append(f"Sale Item (Total: ₹{total_amount})")
+                            created_items.append(f"Sale Item (Taxable: ₹{taxable_value}, GST: ₹{total_gst})")
                         else:
                             skipped.append({
                                 'invoice': invoice_num,
                                 'reason': 'No product variants available for default item'
                             })
                             continue
+                        
+                        # Set total_amount to sub_total for later use
+                        total_amount = sub_total
                     except Exception as e:
                         skipped.append({
                             'invoice': invoice_num,
@@ -497,12 +526,14 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                         elif 'online' in channel.lower():
                             channel = 'online'
                 
-                # Get sub_total (or use total_amount if sub_total not available)
-                sub_total = total_amount
-                if 'sub_total' in actual_columns:
-                    sub_val = row[actual_columns['sub_total']]
-                    if sub_val and not pd.isna(sub_val):
-                        sub_total = Decimal(str(sub_val))
+                # Get sub_total (already extracted in summary_format section, but ensure we have it)
+                if not summary_format:
+                    sub_total = total_amount
+                    if 'sub_total' in actual_columns:
+                        sub_val = row[actual_columns['sub_total']]
+                        if sub_val and not pd.isna(sub_val):
+                            sub_total = Decimal(str(sub_val))
+                # For summary_format, sub_total is already extracted above
                 
                 # Get charges and charges_discount
                 charges = Decimal(0)
@@ -524,18 +555,20 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                     if disc_val and not pd.isna(disc_val):
                         discount_amount = Decimal(str(disc_val))
                 
-                # Get CGST and SGST amounts
-                cgst_amount = Decimal(0)
-                if 'cgst' in actual_columns:
-                    cgst_val = row[actual_columns['cgst']]
-                    if cgst_val and not pd.isna(cgst_val):
-                        cgst_amount = Decimal(str(cgst_val))
-                
-                sgst_amount = Decimal(0)
-                if 'sgst' in actual_columns:
-                    sgst_val = row[actual_columns['sgst']]
-                    if sgst_val and not pd.isna(sgst_val):
-                        sgst_amount = Decimal(str(sgst_val))
+                # Get CGST and SGST amounts (if not already extracted in summary_format section)
+                if not summary_format:
+                    cgst_amount = Decimal(0)
+                    if 'cgst' in actual_columns:
+                        cgst_val = row[actual_columns['cgst']]
+                        if cgst_val and not pd.isna(cgst_val):
+                            cgst_amount = Decimal(str(cgst_val))
+                    
+                    sgst_amount = Decimal(0)
+                    if 'sgst' in actual_columns:
+                        sgst_val = row[actual_columns['sgst']]
+                        if sgst_val and not pd.isna(sgst_val):
+                            sgst_amount = Decimal(str(sgst_val))
+                # For summary_format, CGST and SGST are already extracted above
                 
                 # Calculate total tax
                 tax_amount = cgst_amount + sgst_amount
