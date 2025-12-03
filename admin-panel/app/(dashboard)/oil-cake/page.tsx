@@ -110,8 +110,10 @@ export default function OilCakeSalesPage() {
   const handleOpenDialog = (sale?: OilCakeSale) => {
     if (sale) {
       setEditingSale(sale);
+      // Format date properly - ensure it's in YYYY-MM-DD format
+      const saleDate = sale.date ? format(new Date(sale.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
       setFormData({
-        date: sale.date,
+        date: saleDate,
         customer_id: sale.customer_id || '',
         cake_category: sale.cake_category,
         cake: sale.cake,
@@ -146,16 +148,25 @@ export default function OilCakeSalesPage() {
     setSubmitting(true);
 
     try {
-      const payload = {
+      // Build payload - only include fields that have values
+      const payload: any = {
         date: formData.date,
-        customer_id: formData.customer_id || undefined,
         cake_category: formData.cake_category,
         cake: formData.cake,
         quantity: parseFloat(formData.quantity),
         price_per_kg: parseFloat(formData.price_per_kg),
         is_paid: formData.is_paid,
-        remarks: formData.remarks || undefined,
       };
+
+      // Only include customer_id if it's set and not 'none'
+      if (formData.customer_id && formData.customer_id !== 'none') {
+        payload.customer_id = formData.customer_id;
+      }
+
+      // Only include remarks if it has a value
+      if (formData.remarks && formData.remarks.trim()) {
+        payload.remarks = formData.remarks.trim();
+      }
 
       if (editingSale) {
         await oilCakeSalesApi.update(editingSale.id, payload);
@@ -167,7 +178,31 @@ export default function OilCakeSalesPage() {
       handleCloseDialog();
     } catch (error: any) {
       logger.error('Failed to save oil cake sale:', error);
-      alert(error.response?.data?.detail || 'Failed to save oil cake sale');
+      
+      // Extract error message properly
+      let errorMessage = 'Failed to save oil cake sale';
+      if (error.response?.data) {
+        if (typeof error.response.data.detail === 'string') {
+          errorMessage = error.response.data.detail;
+        } else if (Array.isArray(error.response.data.detail)) {
+          // Handle validation errors
+          errorMessage = error.response.data.detail
+            .map((err: any) => {
+              if (typeof err === 'string') return err;
+              if (err.msg) return `${err.loc?.join('.') || 'Field'}: ${err.msg}`;
+              return JSON.stringify(err);
+            })
+            .join('\n');
+        } else if (error.response.data.detail) {
+          errorMessage = JSON.stringify(error.response.data.detail);
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
     } finally {
       setSubmitting(false);
     }
