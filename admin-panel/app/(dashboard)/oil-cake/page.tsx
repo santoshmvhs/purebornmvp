@@ -148,15 +148,35 @@ export default function OilCakeSalesPage() {
     setSubmitting(true);
 
     try {
+      // Validate date
+      const parsedDate = new Date(formData.date);
+      if (Number.isNaN(parsedDate.getTime())) {
+        alert('Please select a valid date.');
+        setSubmitting(false);
+        return;
+      }
+      const formattedDate = format(parsedDate, 'yyyy-MM-dd');
+
       // Build payload - only include fields that have values
       const payload: any = {
-        date: formData.date,
-        cake_category: formData.cake_category,
-        cake: formData.cake,
+        date: formattedDate,
+        cake_category: formData.cake_category.trim(),
+        cake: formData.cake.trim(),
         quantity: parseFloat(formData.quantity),
         price_per_kg: parseFloat(formData.price_per_kg),
         is_paid: formData.is_paid,
       };
+
+      if (Number.isNaN(payload.quantity) || payload.quantity <= 0) {
+        alert('Quantity must be greater than 0.');
+        setSubmitting(false);
+        return;
+      }
+      if (Number.isNaN(payload.price_per_kg) || payload.price_per_kg <= 0) {
+        alert('Price per kg must be greater than 0.');
+        setSubmitting(false);
+        return;
+      }
 
       // Only include customer_id if it's set and not 'none'
       if (formData.customer_id && formData.customer_id !== 'none') {
