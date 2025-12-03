@@ -196,6 +196,17 @@ export const salesApi = {
     const response = await api.post('/sales', data);
     return response.data;
   },
+  
+  importExcel: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/sales/import-excel', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
 };
 
 // Reports API
