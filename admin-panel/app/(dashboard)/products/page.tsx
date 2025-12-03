@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { productsApi, productVariantsApi, productCategoriesApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { Plus, Search, Edit, Trash2, Package, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, ChevronDown, ChevronUp, Upload, FileSpreadsheet } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 
 interface Product {
@@ -65,6 +65,10 @@ export default function ProductsPage() {
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -321,6 +325,51 @@ export default function ProductsPage() {
   };
 
   const isProductExpanded = (productId: string) => expandedProducts.has(productId);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+        alert('Please select an Excel file (.xlsx or .xls)');
+        return;
+      }
+      setImportFile(file);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      alert('Please select a file');
+      return;
+    }
+
+    setImporting(true);
+    setImportResult(null);
+
+    try {
+      const result = await productsApi.importExcel(importFile);
+      setImportResult(result);
+      
+      if (result.success && (result.created_products > 0 || result.created_variants > 0)) {
+        // Reload products after successful import
+        await loadProducts();
+      }
+    } catch (error: any) {
+      logger.error('Failed to import products:', error);
+      setImportResult({
+        success: false,
+        error: error.response?.data?.detail || error.message || 'Import failed',
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const resetImport = () => {
+    setImportFile(null);
+    setImportResult(null);
+    setImportDialogOpen(false);
+  };
 
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -757,6 +806,120 @@ export default function ProductsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Import Products from Excel
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Upload an Excel file (.xlsx or .xls) with product data. The file should contain:
+              </p>
+              <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                <li>Category / Sub-Category</li>
+                <li>Item-name (product name)</li>
+                <li>Variant-name</li>
+                <li>Product-code (optional)</li>
+                <li>SKU-code (optional)</li>
+                <li>Metric (unit: ml, Litre, kg, etc.)</li>
+                <li>Selling Price</li>
+                <li>Channel (optional)</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <Input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileSelect}
+                disabled={importing}
+              />
+              {importFile && (
+                <p className="text-sm text-muted-foreground">
+                  Selected: {importFile.name} ({(importFile.size / 1024).toFixed(2)} KB)
+                </p>
+              )}
+            </div>
+
+            {importResult && (
+              <div className={`p-4 rounded-lg ${
+                importResult.success
+                  ? 'bg-green-50 border border-green-200'
+                  : 'bg-red-50 border border-red-200'
+              }`}>
+                {importResult.success ? (
+                  <div className="space-y-2">
+                    <p className="font-semibold text-green-800">
+                      Import completed successfully!
+                    </p>
+                    <div className="text-sm text-green-700 space-y-1">
+                      <p>✓ Created: {importResult.created_products} products, {importResult.created_variants} variants</p>
+                      {importResult.updated_products > 0 && (
+                        <p>↻ Updated: {importResult.updated_products} products, {importResult.updated_variants} variants</p>
+                      )}
+                      {importResult.skipped > 0 && (
+                        <p>⚠ Skipped: {importResult.skipped} items</p>
+                      )}
+                      {importResult.errors > 0 && (
+                        <p>✗ Errors: {importResult.errors}</p>
+                      )}
+                    </div>
+                    {importResult.details?.created_products && importResult.details.created_products.length > 0 && (
+                      <div className="mt-3 text-sm">
+                        <p className="font-medium mb-1">Created Products:</p>
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {importResult.details.created_products.map((name: string, idx: number) => (
+                            <p key={idx} className="text-xs">• {name}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {importResult.details?.errors && importResult.details.errors.length > 0 && (
+                      <div className="mt-3 text-sm">
+                        <p className="font-medium mb-1">Errors:</p>
+                        <div className="max-h-24 overflow-y-auto space-y-1">
+                          {importResult.details.errors.map((error: string, idx: number) => (
+                            <p key={idx} className="text-xs text-red-700">• {error}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <p className="font-semibold text-red-800">Import failed</p>
+                    <p className="text-sm text-red-700 mt-1">
+                      {importResult.error || 'Unknown error occurred'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={resetImport}
+                disabled={importing}
+              >
+                {importResult ? 'Close' : 'Cancel'}
+              </Button>
+              <Button
+                onClick={handleImport}
+                disabled={!importFile || importing}
+              >
+                {importing ? 'Importing...' : 'Import'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>

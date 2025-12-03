@@ -139,6 +139,17 @@ export const productsApi = {
     const response = await api.delete(`/products/${id}`);
     return response.data;
   },
+  
+  importExcel: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/products/import-excel', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
 };
 
 // Product Variants API
