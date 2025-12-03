@@ -218,6 +218,54 @@ export const usersApi = {
 };
 
 // Vendors API
+export const oilCakeSalesApi = {
+  getAll: async (params?: {
+    page?: number;
+    limit?: number;
+    start_date?: string;
+    end_date?: string;
+    customer_id?: string;
+    cake_category?: string;
+    is_paid?: boolean;
+  }) => {
+    const response = await api.get('/oil-cake-sales', { params });
+    return response.data;
+  },
+  getById: async (id: string) => {
+    const response = await api.get(`/oil-cake-sales/${id}`);
+    return response.data;
+  },
+  create: async (data: {
+    date: string;
+    customer_id?: string;
+    cake_category: string;
+    cake: string;
+    quantity: number;
+    price_per_kg: number;
+    is_paid?: boolean;
+    remarks?: string;
+  }) => {
+    const response = await api.post('/oil-cake-sales', data);
+    return response.data;
+  },
+  update: async (id: string, data: {
+    date?: string;
+    customer_id?: string;
+    cake_category?: string;
+    cake?: string;
+    quantity?: number;
+    price_per_kg?: number;
+    is_paid?: boolean;
+    remarks?: string;
+  }) => {
+    const response = await api.put(`/oil-cake-sales/${id}`, data);
+    return response.data;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/oil-cake-sales/${id}`);
+  },
+};
+
 export const vendorsApi = {
   getAll: async (params?: { search?: string; active_only?: boolean }) => {
     const response = await api.get('/vendors', { params });

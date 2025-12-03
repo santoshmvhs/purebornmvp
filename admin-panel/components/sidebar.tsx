@@ -16,7 +16,8 @@ import {
   Receipt,
   Building2,
   UserCircle,
-  Box
+  Box,
+  Cookie
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -27,6 +28,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Products', href: '/products', icon: Package },
   { name: 'Sales', href: '/sales', icon: ShoppingCart },
+  { name: 'Oil Cake Sales', href: '/oil-cake', icon: Cookie },
   { name: 'Purchases', href: '/purchases', icon: Receipt },
   { name: 'Inventory', href: '/inventory', icon: Warehouse },
   { name: 'Manufacturing', href: '/manufacturing', icon: Factory },

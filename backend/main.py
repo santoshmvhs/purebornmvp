@@ -13,7 +13,7 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from app.routers import (
     auth, products, sales, reports, users,
     vendors, customers_new, purchases, views, raw_materials, day_counters,
-    expenses, manufacturing, product_variants, dashboard
+    expenses, manufacturing, product_variants, dashboard, oil_cake_sales
 )
 from app.config import settings, cors_origins
 from app.database import engine
@@ -160,6 +160,7 @@ app.include_router(expenses.router)
 app.include_router(manufacturing.router)
 app.include_router(product_variants.router)
 app.include_router(dashboard.router)
+app.include_router(oil_cake_sales.router)
 
 
 @app.get("/")

@@ -4,6 +4,10 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+import os
+
+# Set flag to skip config validation during migrations
+os.environ['ALEMBIC_CONTEXT'] = 'true'
 
 # Import your models and config
 from app.config import settings
@@ -28,6 +32,7 @@ from app.models import (
     ManufacturingOutput,
     InventoryMovement,
     DayCounter,
+    OilCakeSale,
 )
 
 # this is the Alembic Config object, which provides

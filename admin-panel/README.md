@@ -80,25 +80,11 @@ npm run dev
 
 ## API Configuration
 
-The admin panel connects to the backend API. 
-
-### Local Development
-
-Create a `.env.local` file in the `admin-panel` directory:
+The admin panel connects to the backend API. Update `.env.local` if needed:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:9000
 ```
-
-### Production (Cloudflare Pages)
-
-Set the `NEXT_PUBLIC_API_URL` environment variable in Cloudflare Pages dashboard:
-
-```env
-NEXT_PUBLIC_API_URL=https://purebornmvp.onrender.com
-```
-
-See [ENVIRONMENT_CONFIG.md](./ENVIRONMENT_CONFIG.md) for detailed instructions.
 
 ## Build for Production
 

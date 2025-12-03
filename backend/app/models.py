@@ -57,6 +57,7 @@ class Customer(Base):
 
     # Relationships
     sales = relationship("Sale", back_populates="customer")
+    oil_cake_sales = relationship("OilCakeSale", back_populates="customer")
 
 
 # ============================================================================
@@ -267,6 +268,29 @@ class SaleItem(Base):
     # Relationships
     sale = relationship("Sale", back_populates="items")
     product_variant = relationship("ProductVariant", back_populates="sale_items")
+
+
+# ============================================================================
+# OIL CAKE SALES MODULE
+# ============================================================================
+
+class OilCakeSale(Base):
+    __tablename__ = "oil_cake_sales"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.gen_random_uuid())
+    date = Column(Date, nullable=False)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers_new.id", ondelete="RESTRICT"), nullable=True)
+    cake_category = Column(Text, nullable=False)  # e.g., 'Groundnut', 'Coconut', etc.
+    cake = Column(Text, nullable=False)  # Specific cake type
+    quantity = Column(Numeric(14, 3), nullable=False)  # in kg
+    price_per_kg = Column(Numeric(14, 2), nullable=False)
+    total = Column(Numeric(14, 2), nullable=False)  # quantity * price_per_kg
+    is_paid = Column(Boolean, nullable=False, default=False)
+    remarks = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    # Relationships
+    customer = relationship("Customer", back_populates="oil_cake_sales")
 
 
 # ============================================================================

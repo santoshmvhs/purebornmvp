@@ -437,6 +437,7 @@ class ProductVariantRead(ProductVariantBase):
     id: UUID
     is_active: bool
     created_at: datetime
+    product_name: Optional[str] = None  # Product name from relationship
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -623,6 +624,48 @@ class SaleNewRead(BaseModel):
 
 class SaleNewWithItems(SaleNewRead):
     items: List[SaleItemNewRead]
+    customer: Optional[CustomerNewRead] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ============================================================================
+# Oil Cake Sales Schemas
+# ============================================================================
+
+class OilCakeSaleBase(BaseModel):
+    date: date
+    customer_id: Optional[UUID] = None
+    cake_category: str
+    cake: str
+    quantity: float = Field(gt=0, description="Quantity in kg")
+    price_per_kg: float = Field(gt=0, description="Price per kg")
+    is_paid: bool = False
+    remarks: Optional[str] = None
+
+
+class OilCakeSaleCreate(OilCakeSaleBase):
+    pass
+
+
+class OilCakeSaleUpdate(BaseModel):
+    date: Optional[date] = None
+    customer_id: Optional[UUID] = None
+    cake_category: Optional[str] = None
+    cake: Optional[str] = None
+    quantity: Optional[float] = Field(None, gt=0)
+    price_per_kg: Optional[float] = Field(None, gt=0)
+    is_paid: Optional[bool] = None
+    remarks: Optional[str] = None
+
+
+class OilCakeSaleRead(OilCakeSaleBase):
+    id: UUID
+    total: float  # quantity * price_per_kg
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OilCakeSaleWithCustomer(OilCakeSaleRead):
     customer: Optional[CustomerNewRead] = None
     model_config = ConfigDict(from_attributes=True)
 

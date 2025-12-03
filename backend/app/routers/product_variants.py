@@ -28,7 +28,7 @@ async def list_product_variants(
     """
     List all product variants with pagination and optional filtering.
     """
-    query = select(ProductVariant)
+    query = select(ProductVariant).options(selectinload(ProductVariant.product))
     
     if product_id:
         query = query.where(ProductVariant.product_id == product_id)
@@ -43,9 +43,30 @@ async def list_product_variants(
     query = query.offset(offset).limit(limit)
     
     result = await db.execute(query)
-    variants = result.scalars().all()
+    variants = result.scalars().unique().all()
     
-    return variants
+    # Convert to dict and add product_name, then create Pydantic models
+    from app.schemas import ProductVariantRead
+    variant_dicts = []
+    for variant in variants:
+        variant_dict = {
+            'id': variant.id,
+            'product_id': variant.product_id,
+            'variant_name': variant.variant_name,
+            'multiplier': float(variant.multiplier),
+            'sku': variant.sku,
+            'barcode': variant.barcode,
+            'mrp': float(variant.mrp) if variant.mrp else None,
+            'selling_price': float(variant.selling_price) if variant.selling_price else None,
+            'cost_price': float(variant.cost_price) if variant.cost_price else None,
+            'channel': variant.channel,
+            'is_active': variant.is_active,
+            'created_at': variant.created_at,
+            'product_name': variant.product.name if variant.product else None,
+        }
+        variant_dicts.append(ProductVariantRead(**variant_dict))
+    
+    return variant_dicts
 
 
 @router.get("/{variant_id}", response_model=ProductVariantRead)

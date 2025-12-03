@@ -34,22 +34,45 @@ Generate JSON serialization code:
 flutter pub run build_runner build --delete-conflicting-outputs
 ```
 
-### 3. Configure API Endpoint
+### 3. Configure Supabase Authentication
 
-Edit `lib/core/env.dart` and set the correct API base URL:
+The app uses Supabase Auth for authentication. Set your Supabase credentials:
+
+**Option 1: Using Dart Defines (Recommended)**
+
+```bash
+flutter run \
+  --dart-define=SUPABASE_URL=https://your-project.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+**Option 2: Edit `lib/core/env.dart`**
+
+```dart
+static const String supabaseUrl = 'https://your-project.supabase.co';
+static const String supabaseAnonKey = 'your-anon-key-here';
+```
+
+See [SUPABASE_SETUP.md](SUPABASE_SETUP.md) for detailed setup instructions.
+
+### 4. Configure API Endpoint
+
+The API base URL is already set to production: `https://purebornmvp.onrender.com`
+
+For local development, edit `lib/core/env.dart`:
 
 ```dart
 // For Android emulator
-static const String apiBaseUrl = 'http://10.0.2.2:8000';
+static const String apiBaseUrl = 'http://10.0.2.2:9000';
 
 // For iOS simulator
-static const String apiBaseUrl = 'http://localhost:8000';
+static const String apiBaseUrl = 'http://localhost:9000';
 
 // For physical device (replace with your computer's IP)
-static const String apiBaseUrl = 'http://192.168.1.100:8000';
+static const String apiBaseUrl = 'http://192.168.1.100:9000';
 ```
 
-### 4. Run the App
+### 5. Run the App
 
 ```bash
 # Run on connected device/emulator
@@ -174,8 +197,9 @@ flutter build web --release
 ### Login
 
 1. Launch the app
-2. Enter credentials (default: `admin` / `admin123`)
+2. Enter your Supabase account email and password
 3. Tap "Login"
+4. Ensure the user exists in both Supabase Auth and backend database
 
 ### Browse Products
 

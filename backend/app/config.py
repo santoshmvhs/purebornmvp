@@ -161,8 +161,10 @@ def validate_settings():
         for warning in warnings:
             warnings_module.warn(warning, UserWarning)
 
-# Run validation
-validate_settings()
+# Run validation (skip in migration context)
+import os
+if os.environ.get('ALEMBIC_CONTEXT') != 'true':
+    validate_settings()
 
 # Parse CORS origins
 if settings.CORS_ORIGINS == "*":
