@@ -141,3 +141,5 @@ yarn-error.log*
 backend/.env
 admin-panel/.env.local
 admin-panel/.env*.local
+*.xlsx
+check_excel*.py

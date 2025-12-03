@@ -11,8 +11,12 @@ from pathlib import Path
 # Add parent directory to path to import app modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Set environment variable to skip validation during script execution
+os.environ['ALEMBIC_CONTEXT'] = 'true'
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select, delete
 from app.database import get_db
 from app.models import Product, ProductCategory, ProductVariant
 from app.config import settings
@@ -38,7 +42,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def import_products_from_excel(file_path: str):
+async def import_products_from_excel(file_path: str, db: AsyncSession):
     """Import products from Excel file."""
     
     if not os.path.exists(file_path):
@@ -49,19 +53,7 @@ async def import_products_from_excel(file_path: str):
         print(f"Error: File must be an Excel file (.xlsx or .xls)")
         return
     
-    # Create database connection
-    # Ensure we use asyncpg driver for async operations
-    db_url = settings.DATABASE_URL
-    if db_url.startswith('postgresql://'):
-        db_url = db_url.replace('postgresql://', 'postgresql+asyncpg://', 1)
-    elif db_url.startswith('postgresql+psycopg'):
-        db_url = db_url.replace('postgresql+psycopg', 'postgresql+asyncpg', 1)
-    
-    engine = create_async_engine(db_url)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
     try:
-        async with async_session() as db:
             # Read Excel file
             if HAS_PANDAS:
                 df = pd.read_excel(file_path, header=0)
@@ -165,7 +157,7 @@ async def import_products_from_excel(file_path: str):
             
             # Helper functions
             def normalize_unit(unit_str):
-                if not unit_str or pd.isna(unit_str):
+                if not unit_str or (HAS_PANDAS and pd.isna(unit_str)) or str(unit_str).strip().lower() in ['nan', 'none', '']:
                     return 'Unit'
                 unit = str(unit_str).strip().lower()
                 unit_map = {
@@ -379,20 +371,45 @@ async def import_products_from_excel(file_path: str):
         logger.error(f"Error importing products: {e}", exc_info=True)
         print(f"\nError: {e}")
         raise
-    finally:
-        await engine.dispose()
+
+
+async def delete_all_products_and_variants(db: AsyncSession):
+    """Delete all products and variants."""
+    
+    # Count before deletion
+    result = await db.execute(select(Product))
+    product_count = len(result.scalars().all())
+    
+    result = await db.execute(select(ProductVariant))
+    variant_count = len(result.scalars().all())
+    
+    if product_count == 0 and variant_count == 0:
+        print("No products or variants to delete.")
+        return 0, 0
+    
+    print(f"\nDeleting {product_count} products and {variant_count} variants...")
+    
+    # Delete variants first (due to foreign key constraint)
+    await db.execute(delete(ProductVariant))
+    
+    # Delete products
+    await db.execute(delete(Product))
+    
+    await db.commit()
+    
+    print(f"✓ Deleted {product_count} products and {variant_count} variants\n")
+    return product_count, variant_count
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python scripts/import_products.py <excel_file_path>")
-        print("\nExample:")
-        print("  python scripts/import_products.py ../Item-MOOSAPET-03_12_2025_09_34_55.xlsx")
-        print("\nNote: Make sure DATABASE_URL is set in your .env file or environment variable")
-        print("      Format: postgresql+asyncpg://user:password@host:port/database")
-        sys.exit(1)
+    import argparse
     
-    file_path = sys.argv[1]
+    parser = argparse.ArgumentParser(description='Import products from Excel file')
+    parser.add_argument('file_path', help='Path to Excel file (.xlsx or .xls)')
+    parser.add_argument('--delete-first', action='store_true', help='Delete all existing products and variants before importing')
+    args = parser.parse_args()
+    
+    file_path = args.file_path
     
     # Check if DATABASE_URL is set
     if not settings.DATABASE_URL or settings.DATABASE_URL == "postgresql://user:password@localhost:5432/posdb":
@@ -401,8 +418,31 @@ if __name__ == "__main__":
         print("Example: export DATABASE_URL='postgresql+asyncpg://user:pass@localhost:5432/dbname'")
         sys.exit(1)
     
+    async def run_import():
+        # Create database connection
+        db_url = settings.DATABASE_URL
+        if db_url.startswith('postgresql://'):
+            db_url = db_url.replace('postgresql://', 'postgresql+asyncpg://', 1)
+        elif db_url.startswith('postgresql+psycopg'):
+            db_url = db_url.replace('postgresql+psycopg', 'postgresql+asyncpg', 1)
+        
+        engine = create_async_engine(
+            db_url,
+            connect_args={"statement_cache_size": 0} if "asyncpg" in db_url else {}
+        )
+        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        
+        try:
+            async with async_session() as db:
+                if args.delete_first:
+                    await delete_all_products_and_variants(db)
+                # Import products from Excel
+                await import_products_from_excel(file_path, db)
+        finally:
+            await engine.dispose()
+    
     try:
-        asyncio.run(import_products_from_excel(file_path))
+        asyncio.run(run_import())
     except Exception as e:
         print(f"\nError: {e}")
         print("\nTroubleshooting:")
