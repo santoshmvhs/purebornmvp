@@ -842,16 +842,22 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                     db.add(sale_item)
                 
                 # Commit every sale individually to avoid memory issues
-                await db.commit()
-                await db.refresh(sale)
-                created_sales.append({
-                    'invoice_number': sale.invoice_number,
-                    'date': str(sale.invoice_date),
-                    'items_count': len(sale_items),
-                    'total_amount': float(sale.total_amount),
-                })
-                if len(created_sales) % 50 == 0:
-                    print(f"  ✓ Processed {len(created_sales)} sales...")
+                try:
+                    await db.commit()
+                    await db.refresh(sale)
+                    created_sales.append({
+                        'invoice_number': sale.invoice_number,
+                        'date': str(sale.invoice_date),
+                        'items_count': len(sale_items),
+                        'total_amount': float(sale.total_amount),
+                    })
+                    if len(created_sales) % 50 == 0:
+                        print(f"  ✓ Processed {len(created_sales)} sales...")
+                except Exception as commit_error:
+                    await db.rollback()
+                    print(f"  ✗ Error committing sale {invoice_num}: {commit_error}")
+                    errors.append(f"Invoice {invoice_num}: Commit error - {str(commit_error)}")
+                    continue
                 
             except Exception as e:
                 await db.rollback()
@@ -860,9 +866,13 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                 errors.append(error_msg)
                 print(f"  Error processing invoice {invoice_num}: {e}")
         
-        # Final commit for any remaining items
-        await db.commit()
-        print(f"\n  Final commit completed. Total processed: {len(created_sales)} sales")
+        # Final commit for any remaining items (if any pending)
+        try:
+            await db.commit()
+            print(f"\n  Final commit completed. Total processed: {len(created_sales)} sales")
+        except Exception as e:
+            print(f"\n  Warning: Final commit failed: {e}")
+            await db.rollback()
         
         print("\n" + "=" * 60)
         print("Import Summary:")
@@ -917,12 +927,18 @@ if __name__ == "__main__":
         elif db_url.startswith('postgresql+psycopg'):
             db_url = db_url.replace('postgresql+psycopg', 'postgresql+asyncpg', 1)
         
+        # Remove timeout from connect_args for asyncpg (it doesn't support it)
+        connect_args = {"statement_cache_size": 0} if "asyncpg" in db_url else {}
+        if "timeout" in connect_args:
+            del connect_args["timeout"]
+        
         engine = create_async_engine(
             db_url,
             pool_size=5,
             max_overflow=10,
             pool_pre_ping=True,
-            connect_args={"statement_cache_size": 0} if "asyncpg" in db_url else {}
+            pool_timeout=30,  # Connection pool timeout
+            connect_args=connect_args
         )
         async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         
