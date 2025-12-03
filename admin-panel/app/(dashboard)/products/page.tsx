@@ -385,17 +385,26 @@ export default function ProductsPage() {
           <p className="text-muted-foreground mt-1">Manage your products and their variants</p>
         </div>
         {isAdmin && (
-          <Dialog open={productDialogOpen} onOpenChange={(open) => {
-            setProductDialogOpen(open);
-            if (!open) resetProductForm();
-          }}>
-            <Button onClick={() => {
-              resetProductForm();
-              setProductDialogOpen(true);
-            }}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Product
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setImportDialogOpen(true)}
+              variant="outline"
+              className="gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              Import from Excel
             </Button>
+            <Dialog open={productDialogOpen} onOpenChange={(open) => {
+              setProductDialogOpen(open);
+              if (!open) resetProductForm();
+            }}>
+              <Button onClick={() => {
+                resetProductForm();
+                setProductDialogOpen(true);
+              }}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Product
+              </Button>
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>
