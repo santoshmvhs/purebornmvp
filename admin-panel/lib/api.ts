@@ -266,6 +266,39 @@ export const oilCakeSalesApi = {
   },
 };
 
+// Customers API
+export const customersApi = {
+  getAll: async (params?: { 
+    search?: string; 
+    active_only?: boolean;
+    page?: number;
+    limit?: number;
+  }) => {
+    const response = await api.get('/customers', { params });
+    return response.data;
+  },
+  
+  getById: async (id: string) => {
+    const response = await api.get(`/customers/${id}`);
+    return response.data;
+  },
+  
+  create: async (data: any) => {
+    const response = await api.post('/customers', data);
+    return response.data;
+  },
+  
+  update: async (id: string, data: any) => {
+    const response = await api.put(`/customers/${id}`, data);
+    return response.data;
+  },
+  
+  delete: async (id: string) => {
+    const response = await api.delete(`/customers/${id}`);
+    return response.data;
+  },
+};
+
 export const vendorsApi = {
   getAll: async (params?: { search?: string; active_only?: boolean }) => {
     const response = await api.get('/vendors', { params });
