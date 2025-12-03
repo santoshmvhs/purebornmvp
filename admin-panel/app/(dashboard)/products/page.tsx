@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { productsApi, productVariantsApi, productCategoriesApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { Plus, Search, Edit, Trash2, Package } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 
 interface Product {
@@ -68,6 +68,7 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const isAdmin = useAuthStore((state) => state.isAdmin());
 
   const [productFormData, setProductFormData] = useState({
@@ -307,6 +308,20 @@ export default function ProductsPage() {
     });
   };
 
+  const toggleProductExpanded = (productId: string) => {
+    setExpandedProducts((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(productId)) {
+        newSet.delete(productId);
+      } else {
+        newSet.add(productId);
+      }
+      return newSet;
+    });
+  };
+
+  const isProductExpanded = (productId: string) => expandedProducts.has(productId);
+
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     (p.product_code && p.product_code.toLowerCase().includes(search.toLowerCase()))
@@ -458,56 +473,81 @@ export default function ProductsPage() {
             <div className="text-center py-8 text-muted-foreground">No products found</div>
           ) : (
             <div className="space-y-6">
-              {filteredProducts.map((product) => (
-                <div key={product.id} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-semibold">{product.name}</h3>
-                        {product.product_code && (
-                          <Badge variant="outline" className="font-mono">{product.product_code}</Badge>
-                        )}
-                        <Badge variant={product.is_active ? 'default' : 'secondary'}>
-                          {product.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
+              {filteredProducts.map((product) => {
+                const isExpanded = isProductExpanded(product.id);
+                const variantCount = variants[product.id]?.length || 0;
+                
+                return (
+                  <div key={product.id} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleProductExpanded(product.id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-semibold">{product.name}</h3>
+                            {product.product_code && (
+                              <Badge variant="outline" className="font-mono">{product.product_code}</Badge>
+                            )}
+                            <Badge variant={product.is_active ? 'default' : 'secondary'}>
+                              {product.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                            {variantCount > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                {variantCount} {variantCount === 1 ? 'variant' : 'variants'}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            Base Unit: {product.base_unit} | HSN: {product.hsn_code}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Category: {product.category_name || (product.category_id ? categoryNameMap[product.category_id] : null) || 'No category'}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        Base Unit: {product.base_unit} | HSN: {product.hsn_code}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Category: {product.category_name || (product.category_id ? categoryNameMap[product.category_id] : null) || 'No category'}
-                      </div>
+                      {isAdmin && (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openAddVariantDialog(product.id)}
+                          >
+                            <Plus className="mr-2 h-3 w-3" />
+                            Add Variant
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditProduct(product)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteProduct(product.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    {isAdmin && (
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openAddVariantDialog(product.id)}
-                        >
-                          <Plus className="mr-2 h-3 w-3" />
-                          Add Variant
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditProduct(product)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteProduct(product.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Variants Table */}
-                  {variants[product.id] && variants[product.id].length > 0 ? (
+                    
+                    {/* Variants Table - Only show when expanded */}
+                    {isExpanded && (
+                      <>
+                        {variants[product.id] && variants[product.id].length > 0 ? (
                     <div className="ml-4">
                       <Table>
                         <TableHeader>
@@ -559,14 +599,17 @@ export default function ProductsPage() {
                         </TableBody>
                       </Table>
                     </div>
-                  ) : (
-                    <div className="ml-4 text-sm text-muted-foreground flex items-center gap-2">
-                      <Package className="h-4 w-4" />
-                      No variants yet. Click "Add Variant" to create one.
-                    </div>
-                  )}
-                </div>
-              ))}
+                        ) : (
+                          <div className="ml-4 text-sm text-muted-foreground flex items-center gap-2">
+                            <Package className="h-4 w-4" />
+                            No variants yet. Click "Add Variant" to create one.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
