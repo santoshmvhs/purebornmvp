@@ -198,7 +198,7 @@ export const salesApi = {
     return response.data;
   },
   
-  getById: async (id: number) => {
+  getById: async (id: string | number) => {
     const response = await api.get(`/sales/${id}`);
     return response.data;
   },

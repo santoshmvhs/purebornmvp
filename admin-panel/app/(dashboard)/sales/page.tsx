@@ -38,7 +38,7 @@ export default function SalesPage() {
     }
   };
 
-  const viewSaleDetails = async (id: number) => {
+  const viewSaleDetails = async (id: string | number) => {
     try {
       const sale = await salesApi.getById(id);
       setSelectedSale(sale);
@@ -138,7 +138,7 @@ export default function SalesPage() {
                   <TableRow key={sale.id}>
                     <TableCell className="font-mono">#{sale.id}</TableCell>
                     <TableCell>
-                      {format(new Date(sale.created_at), 'MMM dd, yyyy HH:mm')}
+                      {format(new Date(sale.invoice_date || sale.created_at), 'MMM dd, yyyy HH:mm')}
                     </TableCell>
                     <TableCell>{sale.user?.username || 'N/A'}</TableCell>
                     <TableCell>
@@ -146,10 +146,10 @@ export default function SalesPage() {
                         {sale.items?.length || 0} items
                       </Badge>
                     </TableCell>
-                    <TableCell>₹{sale.total_amount.toFixed(2)}</TableCell>
-                    <TableCell>₹{(sale.total_tax || 0).toFixed(2)}</TableCell>
+                    <TableCell>₹{(sale.total_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell>₹{((sale.total_tax ?? sale.tax_amount) || 0).toFixed(2)}</TableCell>
                     <TableCell className="font-semibold">
-                      ₹{sale.grand_total.toFixed(2)}
+                      ₹{((sale.grand_total ?? sale.net_amount) || 0).toFixed(2)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -179,7 +179,7 @@ export default function SalesPage() {
                 <div>
                   <p className="text-gray-600">Date</p>
                   <p className="font-medium">
-                    {format(new Date(selectedSale.created_at), 'MMM dd, yyyy HH:mm:ss')}
+                    {format(new Date(selectedSale.invoice_date || selectedSale.created_at), 'MMM dd, yyyy HH:mm:ss')}
                   </p>
                 </div>
                 <div>
@@ -204,8 +204,8 @@ export default function SalesPage() {
                       <TableRow key={item.id}>
                         <TableCell>{item.product?.name}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
-                        <TableCell>₹{item.unit_price.toFixed(2)}</TableCell>
-                        <TableCell>₹{item.line_total.toFixed(2)}</TableCell>
+                        <TableCell>₹{((item.unit_price || 0)).toFixed(2)}</TableCell>
+                        <TableCell>₹{((item.line_total || 0)).toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -215,36 +215,36 @@ export default function SalesPage() {
               <div className="border-t pt-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Subtotal:</span>
-                  <span>₹{selectedSale.total_amount.toFixed(2)}</span>
+                  <span>₹{((selectedSale.total_amount || 0)).toFixed(2)}</span>
                 </div>
 
                 {/* GST Breakdown */}
                 {selectedSale.is_interstate ? (
                   <div className="flex justify-between text-sm">
                     <span>IGST:</span>
-                    <span>₹{selectedSale.igst_amount?.toFixed(2) || '0.00'}</span>
+                    <span>₹{((selectedSale.igst_amount || 0)).toFixed(2)}</span>
                   </div>
                 ) : (
                   <>
                     <div className="flex justify-between text-sm">
                       <span>CGST:</span>
-                      <span>₹{selectedSale.cgst_amount?.toFixed(2) || '0.00'}</span>
+                      <span>₹{((selectedSale.cgst_amount || 0)).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span>SGST:</span>
-                      <span>₹{selectedSale.sgst_amount?.toFixed(2) || '0.00'}</span>
+                      <span>₹{((selectedSale.sgst_amount || 0)).toFixed(2)}</span>
                     </div>
                   </>
                 )}
 
                 <div className="flex justify-between text-sm font-medium">
                   <span>Total GST:</span>
-                  <span>₹{selectedSale.total_tax.toFixed(2)}</span>
+                  <span>₹{((selectedSale.total_tax ?? selectedSale.tax_amount) || 0).toFixed(2)}</span>
                 </div>
 
                 <div className="flex justify-between font-bold text-lg border-t pt-2">
                   <span>Grand Total:</span>
-                  <span>₹{selectedSale.grand_total.toFixed(2)}</span>
+                  <span>₹{((selectedSale.grand_total ?? selectedSale.net_amount) || 0).toFixed(2)}</span>
                 </div>
               </div>
             </div>

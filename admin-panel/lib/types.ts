@@ -28,14 +28,30 @@ export interface SaleItem {
 }
 
 export interface Sale {
-  id: number;
-  created_at: string;
-  user_id: number;
-  customer_id?: number;
+  id: string; // UUID
+  invoice_number?: string;
+  invoice_date: string;
+  invoice_time?: string;
+  customer_id?: string;
+  channel?: string;
   total_amount: number;
-  total_tax: number;
-  grand_total: number;
+  discount_amount?: number;
+  tax_amount: number;
+  net_amount: number;
+  amount_cash?: number;
+  amount_upi?: number;
+  amount_card?: number;
+  amount_credit?: number;
+  total_paid?: number;
+  balance_due?: number;
+  remarks?: string;
+  created_at: string;
   items?: SaleItem[];
+  customer?: any;
+  // Legacy fields for backward compatibility
+  total_tax?: number; // Alias for tax_amount
+  grand_total?: number; // Alias for net_amount
+  user_id?: number;
   user?: User;
   is_interstate?: boolean;
   igst_amount?: number;
