@@ -17,7 +17,9 @@ from app.database import get_db
 from app.models import User, ProductVariant, Sale, SaleItem, Product
 from app.schemas import SaleNewCreate, SaleNewRead, SaleNewWithItems
 from app.deps import get_current_active_user
-from app.logger import logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
 
