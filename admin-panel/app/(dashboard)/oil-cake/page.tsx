@@ -389,14 +389,14 @@ export default function OilCakeSalesPage() {
                 <div className="space-y-2">
                   <Label htmlFor="customer_id">Customer</Label>
                   <Select
-                    value={formData.customer_id}
-                    onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
+                    value={formData.customer_id || 'none'}
+                    onValueChange={(value) => setFormData({ ...formData, customer_id: value === 'none' ? '' : value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select customer" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {customers.map((customer) => (
                         <SelectItem key={customer.id} value={customer.id}>
                           {customer.name}
