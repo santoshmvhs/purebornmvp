@@ -182,7 +182,7 @@ async def get_sale(
     """
     result = await db.execute(
         select(Sale)
-        .options(selectinload(Sale.items).selectinload(SaleItem.product_variant))
+        .options(selectinload(Sale.items).selectinload(SaleItem.product_variant).selectinload(ProductVariant.product))
         .options(selectinload(Sale.customer))
         .where(Sale.id == sale_id)
     )
@@ -193,6 +193,12 @@ async def get_sale(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Sale not found"
         )
+    
+    # Populate product_name on product_variants for proper serialization
+    for item in sale.items:
+        if item.product_variant and item.product_variant.product:
+            item.product_variant.product_name = item.product_variant.product.name
+    
     return sale
 
 
