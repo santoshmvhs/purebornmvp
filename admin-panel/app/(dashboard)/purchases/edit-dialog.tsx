@@ -180,7 +180,26 @@ export function EditPurchaseDialog({ purchase, open, onOpenChange, onSuccess }: 
       onOpenChange(false);
     } catch (err: any) {
       logger.error('Failed to update purchase:', err);
-      alert(err.response?.data?.detail || 'Failed to update purchase');
+      
+      // Handle different error types
+      let errorMessage = 'Failed to update purchase';
+      
+      if (err.response) {
+        // Server responded with an error
+        errorMessage = err.response.data?.detail || err.response.data?.message || errorMessage;
+      } else if (err.request) {
+        // Request was made but no response received (network/CORS error)
+        if (err.message?.includes('CORS') || err.code === 'ERR_NETWORK') {
+          errorMessage = 'Network error: Unable to connect to server. Please check your connection or contact support if the issue persists.';
+        } else {
+          errorMessage = 'Network error: ' + (err.message || 'Unable to reach server');
+        }
+      } else {
+        // Something else happened
+        errorMessage = err.message || errorMessage;
+      }
+      
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }

@@ -122,10 +122,18 @@ app.add_middleware(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all requests."""
+    # Log CORS-related headers for debugging
+    origin = request.headers.get("origin")
+    if origin:
+        logger.debug(f"CORS request from origin: {origin}")
+    
     # OPTIONS requests should be handled by CORS middleware
     # If they reach here, let them pass through
     if request.method == "OPTIONS":
         response = await call_next(request)
+        # Log CORS response headers
+        if origin:
+            logger.debug(f"CORS preflight response - Access-Control-Allow-Origin: {response.headers.get('access-control-allow-origin', 'NOT SET')}")
         return response
     
     import time
