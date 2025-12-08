@@ -110,7 +110,8 @@ export default function NewPurchasePage() {
       return sum + (item.quantity * item.price_per_unit);
     }, 0);
     const totalPaid = amountCash + amountUpi + amountCard;
-    const balanceDue = total - totalPaid + amountCredit;
+    const balanceDue = total - totalPaid;
+    // Credit should equal balance due (amount owed)
     
     return { total, totalPaid, balanceDue };
   };
@@ -121,7 +122,7 @@ export default function NewPurchasePage() {
     setMessage(null);
 
     try {
-      const { total } = calculateTotals();
+      const { total, balanceDue } = calculateTotals();
 
       const data = await purchasesApi.create({
         invoice_number: invoiceNumber || undefined,
@@ -131,7 +132,7 @@ export default function NewPurchasePage() {
         amount_cash: amountCash,
         amount_upi: amountUpi,
         amount_card: amountCard,
-        amount_credit: amountCredit,
+        amount_credit: balanceDue, // Credit equals balance due
         notes: notes || undefined,
         items: items
           .filter(item => item.raw_material_id && item.quantity > 0)
@@ -377,13 +378,15 @@ export default function NewPurchasePage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="amount_credit">Credit</Label>
+                  <Label htmlFor="amount_credit">Credit (Balance Due)</Label>
                   <Input
                     id="amount_credit"
                     type="number"
                     step="0.01"
-                    value={amountCredit || ''}
-                    onChange={(e) => setAmountCredit(Number(e.target.value))}
+                    value={balanceDue.toFixed(2)}
+                    readOnly
+                    className="bg-muted cursor-not-allowed"
+                    title="Credit amount equals balance due (automatically calculated)"
                   />
                 </div>
               </div>

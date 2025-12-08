@@ -59,6 +59,7 @@ export default function ExpensesPage() {
     description: '',
     expense_category_id: '',
     vendor_id: '',
+    total_amount: '',
     amount_cash: '',
     amount_upi: '',
     amount_card: '',
@@ -109,6 +110,8 @@ export default function ExpensesPage() {
     setSubmitting(true);
 
     try {
+      const { balanceDue } = calculateTotals();
+      
       const payload = {
         date: formData.date,
         name: formData.name,
@@ -118,7 +121,7 @@ export default function ExpensesPage() {
         amount_cash: parseFloat(formData.amount_cash) || 0,
         amount_upi: parseFloat(formData.amount_upi) || 0,
         amount_card: parseFloat(formData.amount_card) || 0,
-        amount_credit: parseFloat(formData.amount_credit) || 0,
+        amount_credit: balanceDue, // Credit equals balance due
       };
 
       if (editingExpense) {
@@ -146,10 +149,11 @@ export default function ExpensesPage() {
       description: expense.description || '',
       expense_category_id: expense.expense_category_id || '',
       vendor_id: expense.vendor_id || '',
+      total_amount: expense.total_amount.toString(),
       amount_cash: expense.amount_cash.toString(),
       amount_upi: expense.amount_upi.toString(),
       amount_card: expense.amount_card.toString(),
-      amount_credit: expense.amount_credit.toString(),
+      amount_credit: expense.balance_due.toString(), // Credit equals balance due
     });
     setIsDialogOpen(true);
   };
@@ -176,11 +180,26 @@ export default function ExpensesPage() {
       description: '',
       expense_category_id: '',
       vendor_id: '',
+      total_amount: '',
       amount_cash: '',
       amount_upi: '',
       amount_card: '',
       amount_credit: '',
     });
+  };
+
+  // Calculate totals for display
+  const calculateTotals = () => {
+    const totalAmount = parseFloat(formData.total_amount) || 0;
+    const cash = parseFloat(formData.amount_cash) || 0;
+    const upi = parseFloat(formData.amount_upi) || 0;
+    const card = parseFloat(formData.amount_card) || 0;
+    const totalPaid = cash + upi + card;
+    const balanceDue = totalAmount - totalPaid;
+    // Credit equals balance due
+    const creditAmount = balanceDue;
+    
+    return { totalAmount, totalPaid, balanceDue, creditAmount };
   };
 
   // Calculate KPIs
@@ -420,6 +439,18 @@ export default function ExpensesPage() {
                     </select>
                   </div>
                 </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="total_amount">Total Amount *</Label>
+                  <Input
+                    id="total_amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formData.total_amount}
+                    onChange={(e) => setFormData({ ...formData, total_amount: e.target.value })}
+                    required
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="amount_cash">Cash Amount</Label>
@@ -457,15 +488,33 @@ export default function ExpensesPage() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="amount_credit">Credit Amount</Label>
+                    <Label htmlFor="amount_credit">Credit (Balance Due)</Label>
                     <Input
                       id="amount_credit"
                       type="number"
                       step="0.01"
-                      placeholder="0.00"
-                      value={formData.amount_credit}
-                      onChange={(e) => setFormData({ ...formData, amount_credit: e.target.value })}
+                      value={calculateTotals().creditAmount.toFixed(2)}
+                      readOnly
+                      className="bg-muted cursor-not-allowed"
+                      title="Credit amount equals balance due (automatically calculated)"
                     />
+                  </div>
+                </div>
+                {/* Totals Display */}
+                <div className="border-t pt-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Total Amount:</span>
+                    <span className="font-semibold">₹{calculateTotals().totalAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>Total Paid:</span>
+                    <span>₹{calculateTotals().totalPaid.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>Balance Due:</span>
+                    <span className={calculateTotals().balanceDue > 0 ? 'text-orange-400 font-semibold' : 'font-semibold'}>
+                      ₹{calculateTotals().balanceDue.toFixed(2)}
+                    </span>
                   </div>
                 </div>
               </div>

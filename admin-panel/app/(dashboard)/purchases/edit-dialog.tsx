@@ -153,6 +153,8 @@ export function EditPurchaseDialog({ purchase, open, onOpenChange, onSuccess }: 
 
     setLoading(true);
     try {
+      const { balanceDue } = calculateTotals();
+      
       const payload = {
         invoice_number: formData.invoice_number || undefined,
         invoice_date: formData.invoice_date,
@@ -161,7 +163,7 @@ export function EditPurchaseDialog({ purchase, open, onOpenChange, onSuccess }: 
         amount_cash: formData.amount_cash,
         amount_upi: formData.amount_upi,
         amount_card: formData.amount_card,
-        amount_credit: formData.amount_credit,
+        amount_credit: balanceDue, // Credit equals balance due
         notes: formData.notes || undefined,
         items: items
           .filter(item => item.raw_material_id && item.quantity > 0)
@@ -400,12 +402,14 @@ export function EditPurchaseDialog({ purchase, open, onOpenChange, onSuccess }: 
                 />
               </div>
               <div>
-                <Label htmlFor="amount_credit">Credit</Label>
+                <Label htmlFor="amount_credit">Credit (Balance Due)</Label>
                 <Input
                   id="amount_credit"
                   type="number"
-                  value={formData.amount_credit}
-                  onChange={(e) => setFormData({ ...formData, amount_credit: parseFloat(e.target.value) || 0 })}
+                  value={balanceDue.toFixed(2)}
+                  readOnly
+                  className="bg-muted cursor-not-allowed"
+                  title="Credit amount equals balance due (automatically calculated)"
                   min="0"
                   step="0.01"
                 />
