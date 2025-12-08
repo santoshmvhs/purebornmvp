@@ -106,7 +106,10 @@ async def create_purchase(
         amount_credit = Decimal(str(purchase_data.amount_credit))
         
         total_paid = amount_cash + amount_upi + amount_card
-        balance_due = total_amount - total_paid + amount_credit
+        balance_due = total_amount - total_paid
+        # Credit should equal balance due (amount owed)
+        # Frontend sends balance_due as amount_credit, ensure they match
+        amount_credit = balance_due
         
         # Create Purchase record
         purchase = Purchase(
@@ -350,7 +353,10 @@ async def update_purchase(
         amount_credit = Decimal(str(purchase_data.amount_credit))
         
         total_paid = amount_cash + amount_upi + amount_card
-        balance_due = total_amount - total_paid + amount_credit
+        balance_due = total_amount - total_paid
+        # Credit should equal balance due (amount owed)
+        # Frontend sends balance_due as amount_credit, ensure they match
+        amount_credit = balance_due
         
         # Update purchase
         purchase.invoice_number = purchase_data.invoice_number

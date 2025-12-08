@@ -2,7 +2,8 @@
 Dashboard router for KPI calculations and aggregated data.
 Moves heavy calculations from frontend to backend for better performance.
 """
-from fastapi import APIRouter, Depends, Query
+import logging
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
@@ -16,6 +17,8 @@ from app.models import (
     DayCounter, Vendor, Customer, User
 )
 from app.deps import get_current_active_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
