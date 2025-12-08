@@ -14,10 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Calendar, Plus, Edit, Trash2, FileText } from 'lucide-react';
+import { Calendar, Plus, Edit, Trash2, FileText, TrendingUp, Wallet, CreditCard, DollarSign, BarChart3, Target } from 'lucide-react';
 import { dayCountersApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 interface DayCounter {
   id: string;
@@ -163,6 +163,92 @@ export default function DayCounterPage() {
     return (dc.opening_cash_balance || 0) + (dc.sales_cash || 0) - (dc.total_expenses_cash || 0) - (dc.cash_hand_over || 0);
   };
 
+  // Calculate KPIs
+  const calculateKPIs = () => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+
+    // Total KPIs (all time)
+    const totalSales = dayCounters.reduce((sum, dc) => {
+      return sum + calculateTotalSales(dc);
+    }, 0);
+
+    const totalCashSales = dayCounters.reduce((sum, dc) => sum + (dc.sales_cash || 0), 0);
+    const totalUpiSales = dayCounters.reduce((sum, dc) => sum + (dc.sales_upi || 0), 0);
+    const totalCardSales = dayCounters.reduce((sum, dc) => sum + (dc.sales_card || 0), 0);
+    const totalCreditSales = dayCounters.reduce((sum, dc) => sum + (dc.sales_credit || 0), 0);
+
+    const totalCashDifference = dayCounters.reduce((sum, dc) => {
+      const systemClosing = calculateSystemClosing(dc);
+      const difference = (dc.actual_closing_cash || 0) - systemClosing;
+      return sum + Math.abs(difference);
+    }, 0);
+
+    const totalDays = dayCounters.length;
+
+    // Monthly KPIs
+    const monthlyCounters = dayCounters.filter((dc) => {
+      const counterDate = new Date(dc.date);
+      return isWithinInterval(counterDate, { start: monthStart, end: monthEnd });
+    });
+
+    const monthlySales = monthlyCounters.reduce((sum, dc) => {
+      return sum + calculateTotalSales(dc);
+    }, 0);
+
+    const monthlyCashSales = monthlyCounters.reduce((sum, dc) => sum + (dc.sales_cash || 0), 0);
+    const monthlyUpiSales = monthlyCounters.reduce((sum, dc) => sum + (dc.sales_upi || 0), 0);
+    const monthlyCardSales = monthlyCounters.reduce((sum, dc) => sum + (dc.sales_card || 0), 0);
+    const monthlyCreditSales = monthlyCounters.reduce((sum, dc) => sum + (dc.sales_credit || 0), 0);
+
+    const monthlyCashDifference = monthlyCounters.reduce((sum, dc) => {
+      const systemClosing = calculateSystemClosing(dc);
+      const difference = (dc.actual_closing_cash || 0) - systemClosing;
+      return sum + Math.abs(difference);
+    }, 0);
+
+    const monthlyDays = monthlyCounters.length;
+
+    // Calculate averages
+    const avgDailySales = totalDays > 0 ? totalSales / totalDays : 0;
+    const avgMonthlyDailySales = monthlyDays > 0 ? monthlySales / monthlyDays : 0;
+    const avgCashDifference = totalDays > 0 ? totalCashDifference / totalDays : 0;
+
+    // Cash accuracy (percentage of days with zero difference)
+    const perfectDays = dayCounters.filter((dc) => {
+      const systemClosing = calculateSystemClosing(dc);
+      const difference = Math.abs((dc.actual_closing_cash || 0) - systemClosing);
+      return difference === 0;
+    }).length;
+
+    const cashAccuracy = totalDays > 0 ? (perfectDays / totalDays) * 100 : 0;
+
+    return {
+      totalSales,
+      totalCashSales,
+      totalUpiSales,
+      totalCardSales,
+      totalCreditSales,
+      totalCashDifference,
+      totalDays,
+      monthlySales,
+      monthlyCashSales,
+      monthlyUpiSales,
+      monthlyCardSales,
+      monthlyCreditSales,
+      monthlyCashDifference,
+      monthlyDays,
+      avgDailySales,
+      avgMonthlyDailySales,
+      avgCashDifference,
+      cashAccuracy,
+      perfectDays,
+    };
+  };
+
+  const kpis = calculateKPIs();
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -182,6 +268,116 @@ export default function DayCounterPage() {
           <Plus className="mr-2 h-4 w-4" />
           Add Day Counter
         </Button>
+      </div>
+
+      {/* KPIs Section */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <TrendingUp className="h-5 w-5" />
+          Day Counter Overview
+        </h2>
+        
+        {/* Primary KPIs */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Sales</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{kpis.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">{kpis.totalDays} days recorded</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Sales</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{kpis.monthlySales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">{kpis.monthlyDays} days this month</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Avg Daily Sales
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{kpis.avgDailySales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">All time average</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Target className="h-4 w-4" />
+                Cash Accuracy
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${kpis.cashAccuracy >= 90 ? 'text-green-400' : kpis.cashAccuracy >= 70 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                {kpis.cashAccuracy.toFixed(1)}%
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{kpis.perfectDays} perfect days</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Payment Methods */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                Cash Sales
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-400">₹{kpis.monthlyCashSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.monthlySales > 0 ? ((kpis.monthlyCashSales / kpis.monthlySales) * 100).toFixed(1) : 0}% of monthly
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                UPI Sales
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-400">₹{kpis.monthlyUpiSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.monthlySales > 0 ? ((kpis.monthlyUpiSales / kpis.monthlySales) * 100).toFixed(1) : 0}% of monthly
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Card Sales</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-400">₹{kpis.monthlyCardSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.monthlySales > 0 ? ((kpis.monthlyCardSales / kpis.monthlySales) * 100).toFixed(1) : 0}% of monthly
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Avg Cash Difference</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${kpis.avgCashDifference < 100 ? 'text-green-400' : 'text-orange-400'}`}>
+                ₹{kpis.avgCashDifference.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Per day average</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Card>

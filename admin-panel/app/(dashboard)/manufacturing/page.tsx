@@ -14,10 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Factory, Plus, Edit, Trash2, X } from 'lucide-react';
+import { Factory, Plus, Edit, Trash2, X, TrendingUp, Calendar, Package, BarChart3 } from 'lucide-react';
 import { manufacturingApi, rawMaterialsApi, productsApi, productVariantsApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 interface ManufacturingBatch {
   id: string;
@@ -239,6 +239,46 @@ export default function ManufacturingPage() {
     setOutputs([]);
   };
 
+  // Calculate KPIs
+  const calculateKPIs = () => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+
+    const totalBatches = batches.length;
+
+    const monthlyBatches = batches.filter((batch) => {
+      const batchDate = new Date(batch.batch_date);
+      return isWithinInterval(batchDate, { start: monthStart, end: monthEnd });
+    }).length;
+
+    // Calculate average inputs and outputs per batch
+    let totalInputs = 0;
+    let totalOutputs = 0;
+    batches.forEach((batch) => {
+      if (batch.inputs) {
+        totalInputs += batch.inputs.length;
+      }
+      if (batch.outputs) {
+        totalOutputs += batch.outputs.length;
+      }
+    });
+
+    const avgInputsPerBatch = totalBatches > 0 ? totalInputs / totalBatches : 0;
+    const avgOutputsPerBatch = totalBatches > 0 ? totalOutputs / totalBatches : 0;
+
+    return {
+      totalBatches,
+      monthlyBatches,
+      avgInputsPerBatch,
+      avgOutputsPerBatch,
+      totalInputs,
+      totalOutputs,
+    };
+  };
+
+  const kpis = calculateKPIs();
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -426,6 +466,62 @@ export default function ManufacturingPage() {
             </form>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* KPIs Section */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <TrendingUp className="h-5 w-5" />
+          Manufacturing Overview
+        </h2>
+        
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Batches</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpis.totalBatches}</div>
+              <p className="text-xs text-muted-foreground mt-1">All time</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Monthly Batches
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpis.monthlyBatches}</div>
+              <p className="text-xs text-muted-foreground mt-1">This month</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Avg Inputs/Batch
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpis.avgInputsPerBatch.toFixed(1)}</div>
+              <p className="text-xs text-muted-foreground mt-1">Raw materials per batch</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Avg Outputs/Batch
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpis.avgOutputsPerBatch.toFixed(1)}</div>
+              <p className="text-xs text-muted-foreground mt-1">Products per batch</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Card>

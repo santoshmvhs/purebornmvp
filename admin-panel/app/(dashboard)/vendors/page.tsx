@@ -14,9 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Building2, Plus, Edit, Trash2 } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, TrendingUp, CheckCircle, FileText, Calendar } from 'lucide-react';
 import { vendorsApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
+import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 interface Vendor {
   id: string;
@@ -129,6 +130,39 @@ export default function VendorsPage() {
     (v.gst_number && v.gst_number.includes(search))
   );
 
+  // Calculate KPIs
+  const calculateKPIs = () => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+
+    const totalVendors = vendors.length;
+    const activeVendors = vendors.filter(v => v.is_active).length;
+    const vendorsWithGST = vendors.filter(v => v.gst_number && v.gst_number.trim() !== '').length;
+    
+    // Note: We don't have created_at in the interface, so we'll skip recent vendors for now
+    // If you add created_at later, you can calculate recent vendors like this:
+    // const recentVendors = vendors.filter(v => {
+    //   const createdDate = new Date(v.created_at);
+    //   return isWithinInterval(createdDate, { start: monthStart, end: monthEnd });
+    // }).length;
+
+    const activePercentage = totalVendors > 0 ? (activeVendors / totalVendors) * 100 : 0;
+    const gstPercentage = totalVendors > 0 ? (vendorsWithGST / totalVendors) * 100 : 0;
+
+    return {
+      totalVendors,
+      activeVendors,
+      inactiveVendors: totalVendors - activeVendors,
+      vendorsWithGST,
+      vendorsWithoutGST: totalVendors - vendorsWithGST,
+      activePercentage,
+      gstPercentage,
+    };
+  };
+
+  const kpis = calculateKPIs();
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -240,6 +274,65 @@ export default function VendorsPage() {
             </form>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* KPIs Section */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <TrendingUp className="h-5 w-5" />
+          Vendor Overview
+        </h2>
+        
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Vendors</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpis.totalVendors}</div>
+              <p className="text-xs text-muted-foreground mt-1">All vendors</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Active Vendors
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-400">{kpis.activeVendors}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.activePercentage.toFixed(1)}% of total
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                With GST Number
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-400">{kpis.vendorsWithGST}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.gstPercentage.toFixed(1)}% of total
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Inactive Vendors</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-400">{kpis.inactiveVendors}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.totalVendors > 0 ? ((kpis.inactiveVendors / kpis.totalVendors) * 100).toFixed(1) : 0}% of total
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Card>

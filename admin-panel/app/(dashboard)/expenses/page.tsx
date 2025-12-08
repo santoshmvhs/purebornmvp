@@ -14,10 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { FileText, Plus, Edit, Trash2, TrendingUp } from 'lucide-react';
+import { FileText, Plus, Edit, Trash2, TrendingUp, CreditCard, Wallet, DollarSign, BarChart3, AlertCircle } from 'lucide-react';
 import { expensesApi, vendorsApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 
 interface Expense {
   id: string;
@@ -188,12 +188,20 @@ export default function ExpensesPage() {
     const now = new Date();
     const monthStart = startOfMonth(now);
     const monthEnd = endOfMonth(now);
+    const lastMonthStart = startOfMonth(subMonths(now, 1));
+    const lastMonthEnd = endOfMonth(subMonths(now, 1));
 
     // Total KPIs (all time)
     const totalExpenses = expenses.reduce((sum, exp) => sum + exp.total_amount, 0);
     const totalPaid = expenses.reduce((sum, exp) => sum + exp.total_paid, 0);
     const totalBalance = expenses.reduce((sum, exp) => sum + exp.balance_due, 0);
     const totalCount = expenses.length;
+
+    // Payment method totals (all time)
+    const totalCash = expenses.reduce((sum, exp) => sum + exp.amount_cash, 0);
+    const totalUpi = expenses.reduce((sum, exp) => sum + exp.amount_upi, 0);
+    const totalCard = expenses.reduce((sum, exp) => sum + exp.amount_card, 0);
+    const totalCredit = expenses.reduce((sum, exp) => sum + exp.amount_credit, 0);
 
     // Monthly KPIs (current month)
     const monthlyExpenses = expenses
@@ -222,6 +230,69 @@ export default function ExpensesPage() {
       return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
     }).length;
 
+    // Monthly payment methods
+    const monthlyCash = expenses
+      .filter((exp) => {
+        const expDate = new Date(exp.date);
+        return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
+      })
+      .reduce((sum, exp) => sum + exp.amount_cash, 0);
+
+    const monthlyUpi = expenses
+      .filter((exp) => {
+        const expDate = new Date(exp.date);
+        return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
+      })
+      .reduce((sum, exp) => sum + exp.amount_upi, 0);
+
+    const monthlyCard = expenses
+      .filter((exp) => {
+        const expDate = new Date(exp.date);
+        return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
+      })
+      .reduce((sum, exp) => sum + exp.amount_card, 0);
+
+    const monthlyCredit = expenses
+      .filter((exp) => {
+        const expDate = new Date(exp.date);
+        return isWithinInterval(expDate, { start: monthStart, end: monthEnd });
+      })
+      .reduce((sum, exp) => sum + exp.amount_credit, 0);
+
+    // Last month for comparison
+    const lastMonthExpenses = expenses
+      .filter((exp) => {
+        const expDate = new Date(exp.date);
+        return isWithinInterval(expDate, { start: lastMonthStart, end: lastMonthEnd });
+      })
+      .reduce((sum, exp) => sum + exp.total_amount, 0);
+
+    // Calculate averages
+    const avgExpense = totalCount > 0 ? totalExpenses / totalCount : 0;
+    const avgMonthlyExpense = monthlyCount > 0 ? monthlyExpenses / monthlyCount : 0;
+    const dailyAvgExpense = monthlyCount > 0 ? monthlyExpenses / (new Date().getDate()) : 0;
+
+    // Growth calculation
+    const expenseGrowth = lastMonthExpenses > 0 
+      ? ((monthlyExpenses - lastMonthExpenses) / lastMonthExpenses) * 100 
+      : 0;
+
+    // Credit ratio
+    const creditRatio = totalExpenses > 0 ? (totalCredit / totalExpenses) * 100 : 0;
+
+    // Top categories
+    const categoryMap: Record<string, { name: string; total: number }> = {};
+    expenses.forEach((exp) => {
+      const categoryName = categories.find(c => c.id === exp.expense_category_id)?.name || 'Uncategorized';
+      if (!categoryMap[categoryName]) {
+        categoryMap[categoryName] = { name: categoryName, total: 0 };
+      }
+      categoryMap[categoryName].total += exp.total_amount;
+    });
+    const topCategories = Object.values(categoryMap)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 3);
+
     return {
       totalExpenses,
       totalPaid,
@@ -231,6 +302,21 @@ export default function ExpensesPage() {
       monthlyPaid,
       monthlyBalance,
       monthlyCount,
+      totalCash,
+      totalUpi,
+      totalCard,
+      totalCredit,
+      monthlyCash,
+      monthlyUpi,
+      monthlyCard,
+      monthlyCredit,
+      avgExpense,
+      avgMonthlyExpense,
+      dailyAvgExpense,
+      expenseGrowth,
+      creditRatio,
+      topCategories,
+      lastMonthExpenses,
     };
   };
 
@@ -407,6 +493,8 @@ export default function ExpensesPage() {
           <TrendingUp className="h-5 w-5" />
           Expense Overview
         </h2>
+        
+        {/* Primary KPIs */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
@@ -423,7 +511,14 @@ export default function ExpensesPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">₹{kpis.monthlyExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-              <p className="text-xs text-muted-foreground mt-1">{kpis.monthlyCount} expenses this month</p>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                {kpis.monthlyCount} expenses
+                {kpis.expenseGrowth !== 0 && (
+                  <span className={`flex items-center gap-1 ${kpis.expenseGrowth > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    {kpis.expenseGrowth > 0 ? '↑' : '↓'} {Math.abs(kpis.expenseGrowth).toFixed(1)}%
+                  </span>
+                )}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -447,7 +542,65 @@ export default function ExpensesPage() {
             </CardContent>
           </Card>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2 mt-4">
+
+        {/* Secondary KPIs - Payment Methods & Averages */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                Cash Expenses
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-400">₹{kpis.monthlyCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.monthlyExpenses > 0 ? ((kpis.monthlyCash / kpis.monthlyExpenses) * 100).toFixed(1) : 0}% of monthly
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                UPI Expenses
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-400">₹{kpis.monthlyUpi.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.monthlyExpenses > 0 ? ((kpis.monthlyUpi / kpis.monthlyExpenses) * 100).toFixed(1) : 0}% of monthly
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Avg Expense
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{kpis.avgMonthlyExpense.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">Per transaction (monthly)</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Daily Average
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{kpis.dailyAvgExpense.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">This month</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Credit & Additional Metrics */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Paid</CardTitle>
@@ -468,7 +621,56 @@ export default function ExpensesPage() {
               <p className="text-xs text-muted-foreground mt-1">Outstanding</p>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                Credit Ratio
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${kpis.creditRatio > 30 ? 'text-orange-400' : 'text-green-400'}`}>
+                {kpis.creditRatio.toFixed(1)}%
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Credit expenses</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Card Expenses</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-400">₹{kpis.monthlyCard.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {kpis.monthlyExpenses > 0 ? ((kpis.monthlyCard / kpis.monthlyExpenses) * 100).toFixed(1) : 0}% of monthly
+              </p>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Top Categories */}
+        {kpis.topCategories.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-lg font-semibold mb-3">Top Expense Categories</h3>
+            <div className="grid gap-4 md:grid-cols-3">
+              {kpis.topCategories.map((category, index) => (
+                <Card key={index}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'} {category.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-bold">₹{category.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {kpis.totalExpenses > 0 ? ((category.total / kpis.totalExpenses) * 100).toFixed(1) : 0}% of total
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <Card>
