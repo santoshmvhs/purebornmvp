@@ -14,10 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Factory, Plus, Edit, Trash2, X, TrendingUp, Calendar, Package, BarChart3 } from 'lucide-react';
-import { manufacturingApi, rawMaterialsApi, productsApi, productVariantsApi } from '@/lib/api';
+import { Factory, Plus, Edit, Trash2, X, TrendingUp, Calendar, Package, BarChart3, Download } from 'lucide-react';
+import { manufacturingApi, rawMaterialsApi, productsApi, productVariantsApi, purchasesApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval, subDays } from 'date-fns';
 
 interface ManufacturingBatch {
   id: string;
@@ -45,6 +45,21 @@ interface ProductVariant {
   id: string;
   product_id: string;
   variant_name: string;
+  multiplier: number;
+}
+
+interface Purchase {
+  id: string;
+  invoice_number: string | null;
+  invoice_date: string;
+  vendor?: { name: string };
+  items?: Array<{
+    raw_material_id: string;
+    raw_material?: { name: string };
+    quantity: number;
+    unit: string;
+    price_per_unit: number;
+  }>;
 }
 
 export default function ManufacturingPage() {
@@ -63,12 +78,33 @@ export default function ManufacturingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productVariants, setProductVariants] = useState<Record<string, ProductVariant[]>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [showPurchaseSelector, setShowPurchaseSelector] = useState(false);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string>('');
+  
+  // New output structure: product + variants distribution
+  const [productOutputs, setProductOutputs] = useState<Array<{
+    product_id: string;
+    total_quantity: string;
+    unit: string;
+    variant_distributions: Array<{
+      variant_id: string;
+      quantity: string;
+    }>;
+  }>>([]);
 
   useEffect(() => {
     loadBatches();
     loadRawMaterials();
     loadProducts();
   }, []);
+
+  useEffect(() => {
+    if (showPurchaseSelector) {
+      loadPurchases();
+    }
+  }, [showPurchaseSelector]);
 
   const loadRawMaterials = async () => {
     try {
@@ -83,7 +119,7 @@ export default function ManufacturingPage() {
     try {
       const data = await productsApi.getAll({ limit: 100 });
       setProducts(data);
-      // Load variants for each product
+      // Load variants for each product with multiplier
       for (const product of data) {
         const variants = await productVariantsApi.getAll({ product_id: product.id, active_only: false });
         setProductVariants(prev => ({ ...prev, [product.id]: variants }));
@@ -91,6 +127,47 @@ export default function ManufacturingPage() {
     } catch (error) {
       logger.error('Failed to load products:', error);
     }
+  };
+
+  const loadPurchases = async () => {
+    setLoadingPurchases(true);
+    try {
+      // Load purchases from last 30 days
+      const endDate = format(new Date(), 'yyyy-MM-dd');
+      const startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const data = await purchasesApi.getAll({ start_date: startDate, end_date: endDate, limit: 100 });
+      setPurchases(data || []);
+    } catch (error) {
+      logger.error('Failed to load purchases:', error);
+      setPurchases([]);
+    } finally {
+      setLoadingPurchases(false);
+    }
+  };
+
+  const handleLoadFromPurchase = () => {
+    if (!selectedPurchaseId) {
+      alert('Please select a purchase first');
+      return;
+    }
+    
+    const purchase = purchases.find(p => p.id === selectedPurchaseId);
+    if (!purchase || !purchase.items || purchase.items.length === 0) {
+      alert('Selected purchase has no items');
+      return;
+    }
+
+    // Auto-fill inputs from purchase items
+    const purchaseInputs = purchase.items.map(item => ({
+      raw_material_id: item.raw_material_id,
+      quantity: item.quantity.toString(),
+      unit: item.unit,
+      rate: item.price_per_unit.toString(),
+    }));
+    
+    setInputs(purchaseInputs);
+    setShowPurchaseSelector(false);
+    setSelectedPurchaseId('');
   };
 
   const loadBatches = async () => {
@@ -109,6 +186,16 @@ export default function ManufacturingPage() {
     setSubmitting(true);
 
     try {
+      // Use new productOutputs if available, otherwise fall back to old outputs format
+      const outputData = productOutputs.length > 0 
+        ? convertProductOutputsToOutputs()
+        : outputs.map(out => ({
+            product_id: out.product_id,
+            product_variant_id: out.product_variant_id || undefined,
+            total_output_quantity: parseFloat(out.total_output_quantity),
+            unit: out.unit,
+          }));
+
       const payload = {
         batch_code: formData.batch_code || undefined,
         batch_date: formData.batch_date,
@@ -119,12 +206,7 @@ export default function ManufacturingPage() {
           unit: inp.unit,
           rate: parseFloat(inp.rate),
         })),
-        outputs: outputs.map(out => ({
-          product_id: out.product_id,
-          product_variant_id: out.product_variant_id || undefined,
-          total_output_quantity: parseFloat(out.total_output_quantity),
-          unit: out.unit,
-        })),
+        outputs: outputData,
       };
 
       if (editingBatch) {
@@ -165,25 +247,75 @@ export default function ManufacturingPage() {
     setInputs(updated);
   };
 
-  const addOutput = () => {
-    setOutputs([...outputs, { product_id: '', product_variant_id: '', total_output_quantity: '', unit: '' }]);
+  const addProductOutput = () => {
+    setProductOutputs([...productOutputs, {
+      product_id: '',
+      total_quantity: '',
+      unit: '',
+      variant_distributions: [],
+    }]);
   };
 
-  const removeOutput = (index: number) => {
-    setOutputs(outputs.filter((_, i) => i !== index));
+  const removeProductOutput = (index: number) => {
+    setProductOutputs(productOutputs.filter((_, i) => i !== index));
   };
 
-  const updateOutput = (index: number, field: string, value: string) => {
-    const updated = [...outputs];
-    updated[index] = { ...updated[index], [field]: value };
-    // Auto-fill unit from product
-    if (field === 'product_id' && value) {
-      const product = products.find(p => p.id === value);
-      if (product) {
-        updated[index].unit = product.base_unit;
+  const updateProductOutput = (index: number, field: string, value: string) => {
+    const updated = [...productOutputs];
+    
+    if (field === 'product_id') {
+      updated[index] = { ...updated[index], [field]: value };
+      // Auto-fill unit from product and load variants
+      if (value) {
+        const product = products.find(p => p.id === value);
+        if (product) {
+          updated[index].unit = product.base_unit;
+          // Initialize variant distributions with all variants
+          const variants = productVariants[value] || [];
+          updated[index].variant_distributions = variants.map(v => ({
+            variant_id: v.id,
+            quantity: '',
+          }));
+        }
+      } else {
+        // Clear variant distributions if product is cleared
+        updated[index].variant_distributions = [];
+        updated[index].unit = '';
       }
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
     }
-    setOutputs(updated);
+    
+    setProductOutputs(updated);
+  };
+
+  const updateVariantDistribution = (outputIndex: number, variantId: string, quantity: string) => {
+    const updated = [...productOutputs];
+    const distIndex = updated[outputIndex].variant_distributions.findIndex(d => d.variant_id === variantId);
+    if (distIndex >= 0) {
+      updated[outputIndex].variant_distributions[distIndex].quantity = quantity;
+      setProductOutputs(updated);
+    }
+  };
+
+  // Convert productOutputs to old outputs format for backward compatibility during transition
+  const convertProductOutputsToOutputs = () => {
+    const converted: Array<{ product_id: string; product_variant_id: string; total_output_quantity: string; unit: string }> = [];
+    
+    productOutputs.forEach(productOutput => {
+      productOutput.variant_distributions.forEach(dist => {
+        if (dist.quantity && parseFloat(dist.quantity) > 0) {
+          converted.push({
+            product_id: productOutput.product_id,
+            product_variant_id: dist.variant_id,
+            total_output_quantity: dist.quantity,
+            unit: productOutput.unit,
+          });
+        }
+      });
+    });
+    
+    return converted;
   };
 
   const handleEdit = async (batch: ManufacturingBatch) => {
@@ -202,12 +334,52 @@ export default function ManufacturingPage() {
         unit: inp.unit,
         rate: inp.rate.toString(),
       })) || []);
-      setOutputs(fullBatch.outputs?.map((out: any) => ({
-        product_id: out.product_id,
-        product_variant_id: out.product_variant_id || '',
-        total_output_quantity: out.total_output_quantity?.toString() || '',
-        unit: out.unit || '',
-      })) || []);
+      
+      // Convert outputs to new format: group by product_id
+      if (fullBatch.outputs && fullBatch.outputs.length > 0) {
+        const outputsByProduct: Record<string, any[]> = {};
+        fullBatch.outputs.forEach((out: any) => {
+          if (!outputsByProduct[out.product_id]) {
+            outputsByProduct[out.product_id] = [];
+          }
+          outputsByProduct[out.product_id].push(out);
+        });
+        
+        const convertedOutputs = Object.entries(outputsByProduct).map(([productId, productOutputs]) => {
+          // Get unit from first output
+          const unit = productOutputs[0]?.unit || '';
+          // Calculate total quantity
+          const totalQuantity = productOutputs.reduce((sum, out) => sum + (parseFloat(out.total_output_quantity) || 0), 0);
+          
+          // Create variant distributions
+          const variantDistributions = productOutputs
+            .filter(out => out.product_variant_id)
+            .map(out => ({
+              variant_id: out.product_variant_id,
+              quantity: out.total_output_quantity?.toString() || '',
+            }));
+          
+          return {
+            product_id: productId,
+            total_quantity: totalQuantity.toString(),
+            unit: unit,
+            variant_distributions: variantDistributions,
+          };
+        });
+        
+        setProductOutputs(convertedOutputs);
+        // Keep old outputs for backward compatibility
+        setOutputs(fullBatch.outputs?.map((out: any) => ({
+          product_id: out.product_id,
+          product_variant_id: out.product_variant_id || '',
+          total_output_quantity: out.total_output_quantity?.toString() || '',
+          unit: out.unit || '',
+        })) || []);
+      } else {
+        setProductOutputs([]);
+        setOutputs([]);
+      }
+      
       setIsDialogOpen(true);
     } catch (error) {
       logger.error('Failed to load batch details:', error);
@@ -237,6 +409,9 @@ export default function ManufacturingPage() {
     });
     setInputs([]);
     setOutputs([]);
+    setProductOutputs([]);
+    setShowPurchaseSelector(false);
+    setSelectedPurchaseId('');
   };
 
   // Calculate KPIs
@@ -349,10 +524,21 @@ export default function ManufacturingPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Raw Material Inputs (Consumed)</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addInput}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Input
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setShowPurchaseSelector(true)}
+                      >
+                        <Download className="h-4 w-4 mr-1" />
+                        Load from Purchase
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={addInput}>
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add Input
+                      </Button>
+                    </div>
                   </div>
                   {inputs.map((input, index) => (
                     <div key={index} className="grid grid-cols-5 gap-2 p-3 border rounded-lg">
@@ -400,54 +586,92 @@ export default function ManufacturingPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Product Outputs (Produced)</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addOutput}>
+                    <Button type="button" variant="outline" size="sm" onClick={addProductOutput}>
                       <Plus className="h-4 w-4 mr-1" />
-                      Add Output
+                      Add Product Output
                     </Button>
                   </div>
-                  {outputs.map((output, index) => (
-                    <div key={index} className="grid grid-cols-5 gap-2 p-3 border rounded-lg">
-                      <select
-                        value={output.product_id}
-                        onChange={(e) => updateOutput(index, 'product_id', e.target.value)}
-                        className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        required
-                      >
-                        <option value="">Select Product</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={output.product_variant_id}
-                        onChange={(e) => updateOutput(index, 'product_variant_id', e.target.value)}
-                        className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        disabled={!output.product_id}
-                      >
-                        <option value="">Select Variant (Optional)</option>
-                        {output.product_id && productVariants[output.product_id]?.map((v) => (
-                          <option key={v.id} value={v.id}>{v.variant_name}</option>
-                        ))}
-                      </select>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        placeholder="Quantity"
-                        value={output.total_output_quantity}
-                        onChange={(e) => updateOutput(index, 'total_output_quantity', e.target.value)}
-                        required
-                      />
-                      <Input
-                        placeholder="Unit"
-                        value={output.unit}
-                        onChange={(e) => updateOutput(index, 'unit', e.target.value)}
-                        required
-                      />
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeOutput(index)}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
+                  {productOutputs.map((productOutput, outputIndex) => {
+                    const variants = productOutput.product_id ? (productVariants[productOutput.product_id] || []) : [];
+                    const totalDistributed = productOutput.variant_distributions.reduce((sum, dist) => {
+                      return sum + (parseFloat(dist.quantity) || 0);
+                    }, 0);
+                    const remaining = (parseFloat(productOutput.total_quantity) || 0) - totalDistributed;
+                    
+                    return (
+                      <div key={outputIndex} className="p-4 border rounded-lg space-y-3">
+                        <div className="grid grid-cols-4 gap-2">
+                          <select
+                            value={productOutput.product_id}
+                            onChange={(e) => updateProductOutput(outputIndex, 'product_id', e.target.value)}
+                            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            required
+                          >
+                            <option value="">Select Product</option>
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                          <Input
+                            type="number"
+                            step="0.001"
+                            placeholder="Total Quantity"
+                            value={productOutput.total_quantity}
+                            onChange={(e) => updateProductOutput(outputIndex, 'total_quantity', e.target.value)}
+                            required
+                          />
+                          <Input
+                            placeholder="Unit"
+                            value={productOutput.unit}
+                            onChange={(e) => updateProductOutput(outputIndex, 'unit', e.target.value)}
+                            required
+                          />
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeProductOutput(outputIndex)}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        
+                        {productOutput.product_id && variants.length > 0 && (
+                          <div className="pl-4 border-l-2 space-y-2">
+                            <Label className="text-sm text-muted-foreground">Distribute among variants:</Label>
+                            {variants.map((variant) => {
+                              const dist = productOutput.variant_distributions.find(d => d.variant_id === variant.id);
+                              const distQuantity = parseFloat(dist?.quantity || '0');
+                              const totalQuantity = parseFloat(productOutput.total_quantity || '0');
+                              const percentage = totalQuantity > 0 ? (distQuantity / totalQuantity) * 100 : 0;
+                              
+                              return (
+                                <div key={variant.id} className="grid grid-cols-4 gap-2 items-center">
+                                  <span className="text-sm">{variant.variant_name}</span>
+                                  <span className="text-xs text-muted-foreground">({variant.multiplier}x multiplier)</span>
+                                  <Input
+                                    type="number"
+                                    step="0.001"
+                                    placeholder="Quantity"
+                                    value={dist?.quantity || ''}
+                                    onChange={(e) => updateVariantDistribution(outputIndex, variant.id, e.target.value)}
+                                  />
+                                  <span className="text-xs text-muted-foreground">
+                                    {distQuantity > 0 && totalQuantity > 0
+                                      ? `= ${percentage.toFixed(1)}%`
+                                      : ''}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {productOutput.total_quantity && (
+                              <div className="text-xs pt-2 border-t">
+                                <span className={remaining === 0 ? 'text-green-400' : remaining > 0 ? 'text-orange-400' : 'text-red-400'}>
+                                  Total Distributed: {totalDistributed.toFixed(3)} / {productOutput.total_quantity} 
+                                  {remaining !== 0 && ` (${remaining > 0 ? '+' : ''}${remaining.toFixed(3)} remaining)`}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               <DialogFooter>
@@ -464,6 +688,74 @@ export default function ManufacturingPage() {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Purchase Selector Dialog */}
+        <Dialog open={showPurchaseSelector} onOpenChange={setShowPurchaseSelector}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Load Raw Materials from Purchase</DialogTitle>
+              <DialogDescription>
+                Select a purchase to auto-fill raw material inputs. Purchases from the last 30 days are shown.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {loadingPurchases ? (
+                <div className="text-center py-4">Loading purchases...</div>
+              ) : purchases.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground">No purchases found in the last 30 days</div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Select Purchase</Label>
+                    <select
+                      value={selectedPurchaseId}
+                      onChange={(e) => setSelectedPurchaseId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Select a purchase...</option>
+                      {purchases.map((purchase) => (
+                        <option key={purchase.id} value={purchase.id}>
+                          {purchase.invoice_number || 'No Invoice'} - {format(new Date(purchase.invoice_date), 'dd MMM yyyy')} 
+                          {purchase.vendor?.name && ` - ${purchase.vendor.name}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {selectedPurchaseId && (
+                    <div className="border rounded-lg p-4">
+                      <Label className="text-sm font-semibold mb-2 block">Purchase Items:</Label>
+                      {purchases.find(p => p.id === selectedPurchaseId)?.items?.map((item, idx) => (
+                        <div key={idx} className="text-sm py-1">
+                          • {item.raw_material?.name || 'Unknown'} - {item.quantity} {item.unit} @ ₹{item.price_per_unit}/unit
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowPurchaseSelector(false);
+                  setSelectedPurchaseId('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleLoadFromPurchase}
+                disabled={!selectedPurchaseId}
+              >
+                Load Inputs
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
