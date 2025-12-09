@@ -88,6 +88,8 @@ export default function ManufacturingPage() {
     product_id: string;
     total_quantity: string;
     unit: string;
+    quantity_kg?: string; // For kg to L conversion
+    quantity_ltr?: string; // Converted L value
     variant_distributions: Array<{
       variant_id: string;
       quantity: string;
@@ -282,6 +284,34 @@ export default function ManufacturingPage() {
         updated[index].variant_distributions = [];
         updated[index].unit = '';
       }
+    } else if (field === 'total_quantity') {
+      updated[index] = { ...updated[index], [field]: value };
+      // Auto-convert kg to L (1 kg = 1.10 L)
+      const unit = updated[index].unit?.toLowerCase();
+      if (unit === 'kg' || unit === 'kgs') {
+        const kgValue = parseFloat(value) || 0;
+        const ltrValue = kgValue * 1.10;
+        updated[index].quantity_kg = value;
+        updated[index].quantity_ltr = ltrValue.toFixed(3);
+      } else {
+        // Clear conversion if not kg
+        updated[index].quantity_kg = undefined;
+        updated[index].quantity_ltr = undefined;
+      }
+    } else if (field === 'unit') {
+      updated[index] = { ...updated[index], [field]: value };
+      // Recalculate conversion if unit changes to/from kg
+      const unit = value?.toLowerCase();
+      const totalQty = updated[index].total_quantity;
+      if ((unit === 'kg' || unit === 'kgs') && totalQty) {
+        const kgValue = parseFloat(totalQty) || 0;
+        const ltrValue = kgValue * 1.10;
+        updated[index].quantity_kg = totalQty;
+        updated[index].quantity_ltr = ltrValue.toFixed(3);
+      } else {
+        updated[index].quantity_kg = undefined;
+        updated[index].quantity_ltr = undefined;
+      }
     } else {
       updated[index] = { ...updated[index], [field]: value };
     }
@@ -300,17 +330,38 @@ export default function ManufacturingPage() {
 
   // Convert productOutputs to old outputs format for backward compatibility during transition
   const convertProductOutputsToOutputs = () => {
-    const converted: Array<{ product_id: string; product_variant_id: string; total_output_quantity: string; unit: string }> = [];
+    const converted: Array<{ 
+      product_id: string; 
+      product_variant_id: string; 
+      total_output_quantity: string; 
+      unit: string;
+      quantity_kg?: number;
+      quantity_ltr?: number;
+    }> = [];
     
     productOutputs.forEach(productOutput => {
       productOutput.variant_distributions.forEach(dist => {
         if (dist.quantity && parseFloat(dist.quantity) > 0) {
-          converted.push({
+          const output: any = {
             product_id: productOutput.product_id,
             product_variant_id: dist.variant_id,
             total_output_quantity: dist.quantity,
             unit: productOutput.unit,
-          });
+          };
+          
+          // Add kg and L values if conversion was done
+          if (productOutput.quantity_kg && productOutput.quantity_ltr) {
+            // Distribute the conversion proportionally to each variant
+            const totalQty = parseFloat(productOutput.total_quantity) || 0;
+            const variantQty = parseFloat(dist.quantity) || 0;
+            if (totalQty > 0) {
+              const ratio = variantQty / totalQty;
+              output.quantity_kg = parseFloat(productOutput.quantity_kg) * ratio;
+              output.quantity_ltr = parseFloat(productOutput.quantity_ltr) * ratio;
+            }
+          }
+          
+          converted.push(output);
         }
       });
     });
@@ -351,6 +402,11 @@ export default function ManufacturingPage() {
           // Calculate total quantity
           const totalQuantity = productOutputs.reduce((sum, out) => sum + (parseFloat(out.total_output_quantity) || 0), 0);
           
+          // Get kg and L values if they exist
+          const firstOutput = productOutputs[0];
+          const quantityKg = firstOutput?.quantity_kg?.toString();
+          const quantityLtr = firstOutput?.quantity_ltr?.toString();
+          
           // Create variant distributions
           const variantDistributions = productOutputs
             .filter(out => out.product_variant_id)
@@ -359,12 +415,24 @@ export default function ManufacturingPage() {
               quantity: out.total_output_quantity?.toString() || '',
             }));
           
-          return {
+          const output: any = {
             product_id: productId,
             total_quantity: totalQuantity.toString(),
             unit: unit,
             variant_distributions: variantDistributions,
           };
+          
+          // Add conversion values if they exist
+          if (quantityKg && quantityLtr) {
+            output.quantity_kg = quantityKg;
+            output.quantity_ltr = quantityLtr;
+          } else if ((unit?.toLowerCase() === 'kg' || unit?.toLowerCase() === 'kgs') && totalQuantity > 0) {
+            // Auto-calculate conversion if unit is kg
+            output.quantity_kg = totalQuantity.toString();
+            output.quantity_ltr = (totalQuantity * 1.10).toFixed(3);
+          }
+          
+          return output;
         });
         
         setProductOutputs(convertedOutputs);
@@ -630,6 +698,19 @@ export default function ManufacturingPage() {
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
+                        
+                        {/* Auto-conversion display for kg to L */}
+                        {(productOutput.unit?.toLowerCase() === 'kg' || productOutput.unit?.toLowerCase() === 'kgs') && productOutput.quantity_ltr && productOutput.total_quantity && (
+                          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="text-muted-foreground">Auto-converted:</span>
+                              <span className="font-semibold">{productOutput.total_quantity} kg</span>
+                              <span className="text-muted-foreground">=</span>
+                              <span className="font-semibold text-blue-600 dark:text-blue-400">{productOutput.quantity_ltr} L</span>
+                              <span className="text-xs text-muted-foreground">(1 kg = 1.10 L)</span>
+                            </div>
+                          </div>
+                        )}
                         
                         {productOutput.product_id && variants.length > 0 && (
                           <div className="pl-4 border-l-2 space-y-2">

@@ -114,13 +114,14 @@ async def create_manufacturing_batch(
             
             # Create inventory movement (stock OUT for raw materials)
             movement = InventoryMovement(
-                raw_material_id=raw_material.id,
-                movement_type="manufacturing_out",
-                quantity=-float(quantity),  # Negative for stock out
+                item_type="raw_material",
+                item_id=raw_material.id,
+                quantity_change=-quantity,  # Negative for stock out
                 unit=inp_data.unit,
-                reference_type="manufacturing_batch",
+                cost_per_unit=rate,
+                total_cost=amount,
+                reference_type="manufacturing_input",
                 reference_id=str(batch.id),
-                notes=f"Manufacturing batch {batch.batch_code or batch.id}",
             )
             db.add(movement)
         
@@ -145,13 +146,12 @@ async def create_manufacturing_batch(
             # Create inventory movement (stock IN for product variants)
             if out_data.product_variant_id and out_data.total_output_quantity:
                 movement = InventoryMovement(
-                    product_variant_id=out_data.product_variant_id,
-                    movement_type="manufacturing_in",
-                    quantity=float(out_data.total_output_quantity),
+                    item_type="product_variant",
+                    item_id=out_data.product_variant_id,
+                    quantity_change=Decimal(str(out_data.total_output_quantity)),  # Positive for stock in
                     unit=out_data.unit or "unit",
-                    reference_type="manufacturing_batch",
+                    reference_type="manufacturing_output",
                     reference_id=str(batch.id),
-                    notes=f"Manufacturing batch {batch.batch_code or batch.id}",
                 )
                 db.add(movement)
         

@@ -282,16 +282,26 @@ async def import_products_from_excel(
         def extract_multiplier(variant_name, base_unit):
             if not variant_name:
                 return Decimal(1)
-            variant_lower = str(variant_name).lower()
+            variant_lower = str(variant_name).lower().strip()
             # Try to extract number from variant name (e.g., "250ml" -> 0.25 if base_unit is L)
             numbers = re.findall(r'\d+\.?\d*', variant_lower)
             if numbers:
                 num = Decimal(numbers[0])
                 # Convert to base unit
+                # Handle ml -> L conversion (e.g., 500ml = 0.5L, 250ml = 0.25L)
                 if 'ml' in variant_lower and base_unit == 'L':
                     return num / Decimal(1000)
-                elif 'gram' in variant_lower or 'g' in variant_lower and base_unit == 'kg':
+                # Handle gram/g -> kg conversion
+                elif ('gram' in variant_lower or 'g' in variant_lower) and base_unit == 'kg':
                     return num / Decimal(1000)
+                # Handle LT/L -> L (already in base unit, e.g., 5LT = 5L, 1L = 1L)
+                elif ('lt' in variant_lower or 'l' in variant_lower) and base_unit == 'L':
+                    # Check if it's not ml (already handled above)
+                    if 'ml' not in variant_lower:
+                        return num
+                # Handle kg -> kg (already in base unit)
+                elif 'kg' in variant_lower and base_unit == 'kg':
+                    return num
             return Decimal(1)
         
         # Load existing categories

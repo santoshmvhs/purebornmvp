@@ -173,14 +173,24 @@ async def import_products_from_excel(file_path: str, db: AsyncSession):
             def extract_multiplier(variant_name, base_unit):
                 if not variant_name:
                     return Decimal(1)
-                variant_lower = str(variant_name).lower()
+                variant_lower = str(variant_name).lower().strip()
                 numbers = re.findall(r'\d+\.?\d*', variant_lower)
                 if numbers:
                     num = Decimal(numbers[0])
+                    # Handle ml -> L conversion (e.g., 500ml = 0.5L, 250ml = 0.25L)
                     if 'ml' in variant_lower and base_unit == 'L':
                         return num / Decimal(1000)
+                    # Handle gram/g -> kg conversion
                     elif ('gram' in variant_lower or 'g' in variant_lower) and base_unit == 'kg':
                         return num / Decimal(1000)
+                    # Handle LT/L -> L (already in base unit, e.g., 5LT = 5L, 1L = 1L)
+                    elif ('lt' in variant_lower or 'l' in variant_lower) and base_unit == 'L':
+                        # Check if it's not ml (already handled above)
+                        if 'ml' not in variant_lower:
+                            return num
+                    # Handle kg -> kg (already in base unit)
+                    elif 'kg' in variant_lower and base_unit == 'kg':
+                        return num
                 return Decimal(1)
             
             # Load existing data
@@ -304,13 +314,33 @@ async def import_products_from_excel(file_path: str, db: AsyncSession):
                         if channel_val is not None and (not HAS_PANDAS or not pd.isna(channel_val)):
                             channel = str(channel_val).strip()
                     
+                    # Use Product-code as barcode for matching with sales
+                    barcode = None
+                    if product_code:
+                        barcode = str(product_code).strip()
+                    
                     # Calculate multiplier
                     multiplier = extract_multiplier(variant_name, base_unit)
                     
-                    # Get or create variant
+                    # Get or create variant - match by SKU first, then by barcode (Product Code)
                     variant = None
+                    variant_key = None
+                    
                     if sku and sku in existing_variants:
                         variant = existing_variants[sku]
+                        variant_key = sku
+                    elif barcode:
+                        # Also check by barcode (Product Code)
+                        result = await db.execute(
+                            select(ProductVariant).where(ProductVariant.barcode == barcode)
+                        )
+                        existing_by_barcode = result.scalar_one_or_none()
+                        if existing_by_barcode:
+                            variant = existing_by_barcode
+                            variant_key = barcode
+                    
+                    if variant:
+                        # Update existing variant
                         if variant.product_id != product.id:
                             variant.product_id = product.id
                         if variant.variant_name != variant_name:
@@ -319,14 +349,18 @@ async def import_products_from_excel(file_path: str, db: AsyncSession):
                             variant.selling_price = selling_price
                         if channel and variant.channel != channel:
                             variant.channel = channel
-                        updated_variants.append(sku)
+                        if barcode and variant.barcode != barcode:
+                            variant.barcode = barcode
+                        updated_variants.append(variant_key or sku or barcode)
                         print(f"    Updated variant: {variant_name}")
                     else:
+                        # Create new variant
                         variant = ProductVariant(
                             product_id=product.id,
                             variant_name=variant_name,
                             multiplier=float(multiplier),
                             sku=sku,
+                            barcode=barcode,  # Use Product Code as barcode
                             selling_price=float(selling_price) if selling_price else None,
                             channel=channel,
                             is_active=True
@@ -336,8 +370,11 @@ async def import_products_from_excel(file_path: str, db: AsyncSession):
                         await db.refresh(variant)
                         if sku:
                             existing_variants[sku] = variant
+                        if barcode:
+                            # Also index by barcode for lookup
+                            existing_variants[barcode] = variant
                         created_variants.append(variant_name)
-                        print(f"    Created variant: {variant_name}")
+                        print(f"    Created variant: {variant_name} (Product Code: {barcode})")
                     
                 except Exception as e:
                     error_msg = f"Row {idx + 1}: {str(e)}"
