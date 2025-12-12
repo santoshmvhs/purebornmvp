@@ -123,109 +123,68 @@ async def list_expenses(
     # Calculate pagination offset
     offset = (page - 1) * limit
     
+    # Use raw SQL to avoid SQLAlchemy model mapping issues when column doesn't exist
+    # This is safer than trying to use ORM and catching errors
     try:
-        # Try using SQLAlchemy ORM first
-        query = select(Expense)
+        # Build WHERE clause for filters
+        where_clauses = []
+        params = {"limit": limit, "offset": offset}
         
-        # Date range filtering
         if start_date:
-            query = query.where(Expense.date >= start_date)
+            where_clauses.append("date >= :start_date")
+            params["start_date"] = start_date
         if end_date:
-            query = query.where(Expense.date <= end_date)
-        
-        # Category filtering
+            where_clauses.append("date <= :end_date")
+            params["end_date"] = end_date
         if category_id:
-            query = query.where(Expense.expense_category_id == category_id)
-        
-        # Vendor filtering
+            where_clauses.append("expense_category_id = :category_id")
+            params["category_id"] = category_id
         if vendor_id:
-            query = query.where(Expense.vendor_id == vendor_id)
+            where_clauses.append("vendor_id = :vendor_id")
+            params["vendor_id"] = vendor_id
         
-        # Order by most recent first
-        query = query.order_by(Expense.created_at.desc())
+        where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
         
-        # Pagination
-        query = query.offset(offset).limit(limit)
-        
-        result = await db.execute(query)
-        expenses = result.scalars().all()
-        
-        # Handle case where expense_subcategory_id column might not exist yet (migration not run)
-        # Convert to dict and set expense_subcategory_id to None if attribute doesn't exist
-        expense_list = []
-        for expense in expenses:
-            try:
+        # Try to select with expense_subcategory_id first
+        try:
+            sql = text(f"""
+                SELECT id, date, name, description, expense_category_id, expense_subcategory_id, vendor_id,
+                       amount_cash, amount_upi, amount_card, amount_credit,
+                       total_amount, total_paid, balance_due, created_at
+                FROM expenses
+                {where_sql}
+                ORDER BY created_at DESC
+                LIMIT :limit OFFSET :offset
+            """)
+            result = await db.execute(sql, params)
+            rows = result.fetchall()
+            
+            expense_list = []
+            for row in rows:
                 expense_dict = {
-                    'id': expense.id,
-                    'date': expense.date,
-                    'name': expense.name,
-                    'description': expense.description,
-                    'expense_category_id': expense.expense_category_id,
-                    'expense_subcategory_id': getattr(expense, 'expense_subcategory_id', None),
-                    'vendor_id': expense.vendor_id,
-                    'amount_cash': float(expense.amount_cash),
-                    'amount_upi': float(expense.amount_upi),
-                    'amount_card': float(expense.amount_card),
-                    'amount_credit': float(expense.amount_credit),
-                    'total_amount': float(expense.total_amount),
-                    'total_paid': float(expense.total_paid),
-                    'balance_due': float(expense.balance_due),
-                    'created_at': expense.created_at,
+                    'id': row[0],
+                    'date': row[1],
+                    'name': row[2],
+                    'description': row[3],
+                    'expense_category_id': row[4],
+                    'expense_subcategory_id': row[5],  # Column exists
+                    'vendor_id': row[6],
+                    'amount_cash': float(row[7]),
+                    'amount_upi': float(row[8]),
+                    'amount_card': float(row[9]),
+                    'amount_credit': float(row[10]),
+                    'total_amount': float(row[11]),
+                    'total_paid': float(row[12]),
+                    'balance_due': float(row[13]),
+                    'created_at': row[14],
                 }
                 expense_list.append(ExpenseRead(**expense_dict))
-            except Exception as e:
-                logger.error(f"Error serializing expense {expense.id}: {str(e)}", exc_info=True)
-                # Fallback: try without expense_subcategory_id
-                try:
-                    expense_dict = {
-                        'id': expense.id,
-                        'date': expense.date,
-                        'name': expense.name,
-                        'description': expense.description,
-                        'expense_category_id': expense.expense_category_id,
-                        'expense_subcategory_id': None,
-                        'vendor_id': expense.vendor_id,
-                        'amount_cash': float(expense.amount_cash),
-                        'amount_upi': float(expense.amount_upi),
-                        'amount_card': float(expense.amount_card),
-                        'amount_credit': float(expense.amount_credit),
-                        'total_amount': float(expense.total_amount),
-                        'total_paid': float(expense.total_paid),
-                        'balance_due': float(expense.balance_due),
-                        'created_at': expense.created_at,
-                    }
-                    expense_list.append(ExpenseRead(**expense_dict))
-                except Exception as e2:
-                    logger.error(f"Error in fallback serialization: {str(e2)}", exc_info=True)
-                    continue
-        
-        return expense_list
-    except (OperationalError, ProgrammingError) as e:
-        error_str = str(e).lower()
-        if 'expense_subcategory_id' in error_str or 'column' in error_str or 'does not exist' in error_str:
-            # Database migration not run - try querying without the problematic column
-            logger.warning("expense_subcategory_id column not found - migration may not have been run. Using fallback query.")
-            try:
-                # Build WHERE clause for filters
-                where_clauses = []
-                params = {"limit": limit, "offset": offset}
-                
-                if start_date:
-                    where_clauses.append("date >= :start_date")
-                    params["start_date"] = start_date
-                if end_date:
-                    where_clauses.append("date <= :end_date")
-                    params["end_date"] = end_date
-                if category_id:
-                    where_clauses.append("expense_category_id = :category_id")
-                    params["category_id"] = category_id
-                if vendor_id:
-                    where_clauses.append("vendor_id = :vendor_id")
-                    params["vendor_id"] = vendor_id
-                
-                where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-                
-                # Use raw SQL to select only columns that exist
+            return expense_list
+        except (OperationalError, ProgrammingError) as col_error:
+            # Column doesn't exist, use query without it
+            error_str = str(col_error).lower()
+            if 'expense_subcategory_id' in error_str or 'column' in error_str or 'does not exist' in error_str:
+                logger.warning("expense_subcategory_id column not found - using query without it")
                 sql = text(f"""
                     SELECT id, date, name, description, expense_category_id, vendor_id,
                            amount_cash, amount_upi, amount_card, amount_credit,
@@ -246,7 +205,7 @@ async def list_expenses(
                         'name': row[2],
                         'description': row[3],
                         'expense_category_id': row[4],
-                        'expense_subcategory_id': None,  # Column doesn't exist yet
+                        'expense_subcategory_id': None,  # Column doesn't exist
                         'vendor_id': row[5],
                         'amount_cash': float(row[6]),
                         'amount_upi': float(row[7]),
@@ -259,14 +218,7 @@ async def list_expenses(
                     }
                     expense_list.append(ExpenseRead(**expense_dict))
                 return expense_list
-            except Exception as e2:
-                logger.error(f"Error in fallback query: {str(e2)}", exc_info=True)
-                return []
-        logger.error(f"Database error listing expenses: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing expenses: {str(e)}"
-        )
+            raise  # Re-raise if it's a different error
     except Exception as e:
         logger.error(f"Error listing expenses: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -429,7 +381,7 @@ async def create_expense_category(
     return category
 
 
-@router.get("/categories", response_model=List[ExpenseCategoryRead])
+@router.get("/categories")
 async def list_expense_categories(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
@@ -446,18 +398,18 @@ async def list_expense_categories(
         # Return empty list if no categories
         if not categories:
             return []
-        # Manually construct response to avoid relationship access issues
+        # Manually construct response as dicts to avoid any validation issues
         category_list = []
         for cat in categories:
             try:
-                # Use ExpenseCategoryRead to ensure proper validation
-                category_read = ExpenseCategoryRead(
-                    id=cat.id,
-                    name=cat.name,
-                    description=cat.description,
-                    created_at=cat.created_at
-                )
-                category_list.append(category_read)
+                # Return as dict to avoid Pydantic validation issues
+                category_dict = {
+                    "id": str(cat.id),
+                    "name": cat.name or "",
+                    "description": cat.description if cat.description else None,
+                    "created_at": cat.created_at.isoformat() if cat.created_at else None
+                }
+                category_list.append(category_dict)
             except Exception as e:
                 logger.warning(f"Error serializing category {cat.id}: {str(e)}", exc_info=True)
                 continue
