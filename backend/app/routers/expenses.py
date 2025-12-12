@@ -230,11 +230,11 @@ async def list_expenses(
                         continue
                 return Response(content=json.dumps(expense_list, default=str), media_type="application/json")
             raise  # Re-raise if it's a different error
-            except Exception as e:
-                logger.error(f"Error listing expenses: {str(e)}", exc_info=True)
-                # Return empty list instead of 500 to prevent frontend errors
-                # This allows the page to load even if there's a database issue
-                return Response(content=json.dumps([]), media_type="application/json")
+    except Exception as e:
+        logger.error(f"Error listing expenses: {str(e)}", exc_info=True)
+        # Return empty list instead of 500 to prevent frontend errors
+        # This allows the page to load even if there's a database issue
+        return Response(content=json.dumps([]), media_type="application/json")
 
 
 @router.get("/{expense_id}", response_model=ExpenseRead)
