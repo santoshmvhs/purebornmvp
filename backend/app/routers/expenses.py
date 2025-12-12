@@ -120,6 +120,9 @@ async def list_expenses(
     """
     List expenses with optional filtering and pagination.
     """
+    # Calculate pagination offset
+    offset = (page - 1) * limit
+    
     try:
         # Try using SQLAlchemy ORM first
         query = select(Expense)
@@ -142,7 +145,6 @@ async def list_expenses(
         query = query.order_by(Expense.created_at.desc())
         
         # Pagination
-        offset = (page - 1) * limit
         query = query.offset(offset).limit(limit)
         
         result = await db.execute(query)
