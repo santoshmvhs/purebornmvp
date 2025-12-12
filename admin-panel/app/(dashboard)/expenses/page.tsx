@@ -116,6 +116,20 @@ export default function ExpensesPage() {
     }
   };
 
+  const loadSubcategories = async (categoryId: string) => {
+    if (!categoryId) {
+      setSubcategories([]);
+      return;
+    }
+    try {
+      const data = await expensesApi.getSubcategories(categoryId);
+      setSubcategories(data || []);
+    } catch (error: any) {
+      logger.error(`Failed to load subcategories for category ${categoryId}:`, error);
+      setSubcategories([]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
