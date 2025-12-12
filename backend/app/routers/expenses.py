@@ -163,11 +163,10 @@ async def list_expenses(
             expense_list = []
             for row in rows:
                 try:
-                    # Return as dict to avoid Pydantic validation issues
-                    # FastAPI will serialize date/datetime objects automatically
+                    # Return as dict with explicit date serialization
                     expense_dict = {
                         'id': str(row[0]) if row[0] else None,
-                        'date': row[1],  # Date object - FastAPI will serialize to ISO string
+                        'date': row[1].isoformat() if row[1] else None,
                         'name': str(row[2]) if row[2] else '',
                         'description': str(row[3]) if row[3] else None,
                         'expense_category_id': str(row[4]) if row[4] else None,
@@ -180,13 +179,13 @@ async def list_expenses(
                         'total_amount': float(row[11]) if row[11] is not None else 0.0,
                         'total_paid': float(row[12]) if row[12] is not None else 0.0,
                         'balance_due': float(row[13]) if row[13] is not None else 0.0,
-                        'created_at': row[14],  # Datetime object - FastAPI will serialize to ISO string
+                        'created_at': row[14].isoformat() if row[14] else None,
                     }
                     expense_list.append(expense_dict)
                 except Exception as e:
                     logger.error(f"Error creating expense dict from row: {str(e)}", exc_info=True)
                     continue
-            return expense_list
+            return Response(content=json.dumps(expense_list, default=str), media_type="application/json")
         except (OperationalError, ProgrammingError) as col_error:
             # Column doesn't exist, use query without it
             error_str = str(col_error).lower()
@@ -207,11 +206,10 @@ async def list_expenses(
                 expense_list = []
                 for row in rows:
                     try:
-                        # Return as dict to avoid Pydantic validation issues
-                        # FastAPI will serialize date/datetime objects automatically
+                        # Return as dict with explicit date serialization
                         expense_dict = {
                             'id': str(row[0]) if row[0] else None,
-                            'date': row[1],  # Date object - FastAPI will serialize to ISO string
+                            'date': row[1].isoformat() if row[1] else None,
                             'name': str(row[2]) if row[2] else '',
                             'description': str(row[3]) if row[3] else None,
                             'expense_category_id': str(row[4]) if row[4] else None,
@@ -224,19 +222,19 @@ async def list_expenses(
                             'total_amount': float(row[10]) if row[10] is not None else 0.0,
                             'total_paid': float(row[11]) if row[11] is not None else 0.0,
                             'balance_due': float(row[12]) if row[12] is not None else 0.0,
-                            'created_at': row[13],  # Datetime object - FastAPI will serialize to ISO string
+                            'created_at': row[13].isoformat() if row[13] else None,
                         }
                         expense_list.append(expense_dict)
                     except Exception as e:
                         logger.error(f"Error creating expense dict from row: {str(e)}", exc_info=True)
                         continue
-                return expense_list
+                return Response(content=json.dumps(expense_list, default=str), media_type="application/json")
             raise  # Re-raise if it's a different error
-    except Exception as e:
-        logger.error(f"Error listing expenses: {str(e)}", exc_info=True)
-        # Return empty list instead of 500 to prevent frontend errors
-        # This allows the page to load even if there's a database issue
-        return []
+            except Exception as e:
+                logger.error(f"Error listing expenses: {str(e)}", exc_info=True)
+                # Return empty list instead of 500 to prevent frontend errors
+                # This allows the page to load even if there's a database issue
+                return Response(content=json.dumps([]), media_type="application/json")
 
 
 @router.get("/{expense_id}", response_model=ExpenseRead)
