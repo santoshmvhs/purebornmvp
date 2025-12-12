@@ -11,6 +11,7 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from typing import List, Optional
 from datetime import date, datetime
 from uuid import UUID
+import uuid
 from decimal import Decimal
 
 from app.database import get_db
@@ -38,6 +39,7 @@ async def create_expense(
     
     - Validates expense category and vendor if provided
     - Calculates total_amount, total_paid, and balance_due
+    - Handles missing expense_subcategory_id column gracefully
     """
     try:
         # Validate expense category if provided
@@ -74,28 +76,86 @@ async def create_expense(
         total_paid = amount_cash + amount_upi + amount_card
         balance_due = amount_credit
         
-        # Create expense
-        expense = Expense(
-            date=expense_data.date,
-            name=expense_data.name,
-            description=expense_data.description,
-            expense_category_id=expense_data.expense_category_id,
-            expense_subcategory_id=expense_data.expense_subcategory_id,
-            vendor_id=expense_data.vendor_id,
-            amount_cash=float(amount_cash),
-            amount_upi=float(amount_upi),
-            amount_card=float(amount_card),
-            amount_credit=float(amount_credit),
-            total_amount=float(total_amount),
-            total_paid=float(total_paid),
-            balance_due=float(balance_due),
-        )
-        
-        db.add(expense)
-        await db.commit()
-        await db.refresh(expense)
-        
-        return expense
+        # Try to create expense with expense_subcategory_id first
+        try:
+            expense = Expense(
+                date=expense_data.date,
+                name=expense_data.name,
+                description=expense_data.description,
+                expense_category_id=expense_data.expense_category_id,
+                expense_subcategory_id=expense_data.expense_subcategory_id,
+                vendor_id=expense_data.vendor_id,
+                amount_cash=float(amount_cash),
+                amount_upi=float(amount_upi),
+                amount_card=float(amount_card),
+                amount_credit=float(amount_credit),
+                total_amount=float(total_amount),
+                total_paid=float(total_paid),
+                balance_due=float(balance_due),
+            )
+            db.add(expense)
+            await db.commit()
+            await db.refresh(expense)
+            return expense
+        except (OperationalError, ProgrammingError) as col_error:
+            # Column doesn't exist, create without expense_subcategory_id
+            error_str = str(col_error).lower()
+            if 'expense_subcategory_id' in error_str or 'column' in error_str or 'does not exist' in error_str:
+                logger.warning("expense_subcategory_id column not found - creating expense without it")
+                await db.rollback()
+                
+                # Use raw SQL to insert without expense_subcategory_id
+                expense_id = uuid.uuid4()
+                sql = text("""
+                    INSERT INTO expenses (id, date, name, description, expense_category_id, vendor_id,
+                                         amount_cash, amount_upi, amount_card, amount_credit,
+                                         total_amount, total_paid, balance_due)
+                    VALUES (:id, :date, :name, :description, :expense_category_id, :vendor_id,
+                            :amount_cash, :amount_upi, :amount_card, :amount_credit,
+                            :total_amount, :total_paid, :balance_due)
+                    RETURNING id, date, name, description, expense_category_id, vendor_id,
+                              amount_cash, amount_upi, amount_card, amount_credit,
+                              total_amount, total_paid, balance_due, created_at
+                """)
+                params = {
+                    "id": expense_id,
+                    "date": expense_data.date,
+                    "name": expense_data.name,
+                    "description": expense_data.description,
+                    "expense_category_id": expense_data.expense_category_id,
+                    "vendor_id": expense_data.vendor_id,
+                    "amount_cash": float(amount_cash),
+                    "amount_upi": float(amount_upi),
+                    "amount_card": float(amount_card),
+                    "amount_credit": float(amount_credit),
+                    "total_amount": float(total_amount),
+                    "total_paid": float(total_paid),
+                    "balance_due": float(balance_due),
+                }
+                result = await db.execute(sql, params)
+                await db.commit()
+                row = result.fetchone()
+                
+                # Convert to dict and return
+                expense_dict = {
+                    'id': str(row[0]),
+                    'date': row[1].isoformat() if row[1] else None,
+                    'name': str(row[2]) if row[2] else '',
+                    'description': str(row[3]) if row[3] else None,
+                    'expense_category_id': str(row[4]) if row[4] else None,
+                    'expense_subcategory_id': None,  # Column doesn't exist
+                    'vendor_id': str(row[5]) if row[5] else None,
+                    'amount_cash': float(row[6]) if row[6] is not None else 0.0,
+                    'amount_upi': float(row[7]) if row[7] is not None else 0.0,
+                    'amount_card': float(row[8]) if row[8] is not None else 0.0,
+                    'amount_credit': float(row[9]) if row[9] is not None else 0.0,
+                    'total_amount': float(row[10]) if row[10] is not None else 0.0,
+                    'total_paid': float(row[11]) if row[11] is not None else 0.0,
+                    'balance_due': float(row[12]) if row[12] is not None else 0.0,
+                    'created_at': row[13].isoformat() if row[13] else None,
+                }
+                return Response(content=json.dumps(expense_dict, default=str), media_type="application/json")
+            raise  # Re-raise if it's a different error
         
     except HTTPException:
         raise
@@ -259,25 +319,91 @@ async def update_expense(
         total_paid = amount_cash + amount_upi + amount_card
         balance_due = amount_credit
         
-        # Update expense
-        expense.date = expense_data.date
-        expense.name = expense_data.name
-        expense.description = expense_data.description
-        expense.expense_category_id = expense_data.expense_category_id
-        expense.expense_subcategory_id = expense_data.expense_subcategory_id
-        expense.vendor_id = expense_data.vendor_id
-        expense.amount_cash = float(amount_cash)
-        expense.amount_upi = float(amount_upi)
-        expense.amount_card = float(amount_card)
-        expense.amount_credit = float(amount_credit)
-        expense.total_amount = float(total_amount)
-        expense.total_paid = float(total_paid)
-        expense.balance_due = float(balance_due)
-        
-        await db.commit()
-        await db.refresh(expense)
-        
-        return expense
+        # Update expense - try with expense_subcategory_id first
+        try:
+            expense.date = expense_data.date
+            expense.name = expense_data.name
+            expense.description = expense_data.description
+            expense.expense_category_id = expense_data.expense_category_id
+            if hasattr(expense, 'expense_subcategory_id'):
+                expense.expense_subcategory_id = expense_data.expense_subcategory_id
+            expense.vendor_id = expense_data.vendor_id
+            expense.amount_cash = float(amount_cash)
+            expense.amount_upi = float(amount_upi)
+            expense.amount_card = float(amount_card)
+            expense.amount_credit = float(amount_credit)
+            expense.total_amount = float(total_amount)
+            expense.total_paid = float(total_paid)
+            expense.balance_due = float(balance_due)
+            
+            await db.commit()
+            await db.refresh(expense)
+            return expense
+        except (OperationalError, ProgrammingError) as col_error:
+            # Column doesn't exist, update without expense_subcategory_id using raw SQL
+            error_str = str(col_error).lower()
+            if 'expense_subcategory_id' in error_str or 'column' in error_str or 'does not exist' in error_str:
+                logger.warning("expense_subcategory_id column not found - updating expense without it")
+                await db.rollback()
+                
+                sql = text("""
+                    UPDATE expenses
+                    SET date = :date, name = :name, description = :description,
+                        expense_category_id = :expense_category_id, vendor_id = :vendor_id,
+                        amount_cash = :amount_cash, amount_upi = :amount_upi,
+                        amount_card = :amount_card, amount_credit = :amount_credit,
+                        total_amount = :total_amount, total_paid = :total_paid,
+                        balance_due = :balance_due
+                    WHERE id = :expense_id
+                    RETURNING id, date, name, description, expense_category_id, vendor_id,
+                              amount_cash, amount_upi, amount_card, amount_credit,
+                              total_amount, total_paid, balance_due, created_at
+                """)
+                params = {
+                    "expense_id": expense_id,
+                    "date": expense_data.date,
+                    "name": expense_data.name,
+                    "description": expense_data.description,
+                    "expense_category_id": expense_data.expense_category_id,
+                    "vendor_id": expense_data.vendor_id,
+                    "amount_cash": float(amount_cash),
+                    "amount_upi": float(amount_upi),
+                    "amount_card": float(amount_card),
+                    "amount_credit": float(amount_credit),
+                    "total_amount": float(total_amount),
+                    "total_paid": float(total_paid),
+                    "balance_due": float(balance_due),
+                }
+                result = await db.execute(sql, params)
+                await db.commit()
+                row = result.fetchone()
+                
+                if not row:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Expense not found"
+                    )
+                
+                # Convert to dict and return
+                expense_dict = {
+                    'id': str(row[0]),
+                    'date': row[1].isoformat() if row[1] else None,
+                    'name': str(row[2]) if row[2] else '',
+                    'description': str(row[3]) if row[3] else None,
+                    'expense_category_id': str(row[4]) if row[4] else None,
+                    'expense_subcategory_id': None,  # Column doesn't exist
+                    'vendor_id': str(row[5]) if row[5] else None,
+                    'amount_cash': float(row[6]) if row[6] is not None else 0.0,
+                    'amount_upi': float(row[7]) if row[7] is not None else 0.0,
+                    'amount_card': float(row[8]) if row[8] is not None else 0.0,
+                    'amount_credit': float(row[9]) if row[9] is not None else 0.0,
+                    'total_amount': float(row[10]) if row[10] is not None else 0.0,
+                    'total_paid': float(row[11]) if row[11] is not None else 0.0,
+                    'balance_due': float(row[12]) if row[12] is not None else 0.0,
+                    'created_at': row[13].isoformat() if row[13] else None,
+                }
+                return Response(content=json.dumps(expense_dict, default=str), media_type="application/json")
+            raise  # Re-raise if it's a different error
         
     except HTTPException:
         raise
