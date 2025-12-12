@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, Float, ForeignKey, DateTime, Text, Date, Time, Numeric
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -140,10 +140,26 @@ class ExpenseCategory(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.gen_random_uuid())
     name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     # Relationships
     expenses = relationship("Expense", back_populates="expense_category")
+    subcategories = relationship("ExpenseSubcategory", back_populates="category", cascade="all, delete-orphan")
+
+
+class ExpenseSubcategory(Base):
+    __tablename__ = "expense_subcategories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.gen_random_uuid())
+    category_id = Column(UUID(as_uuid=True), ForeignKey("expense_categories.id", ondelete="CASCADE"), nullable=False)
+    name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    # Relationships
+    category = relationship("ExpenseCategory", back_populates="subcategories")
+    expenses = relationship("Expense", back_populates="expense_subcategory")
 
 
 # ============================================================================
@@ -206,6 +222,7 @@ class Expense(Base):
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     expense_category_id = Column(UUID(as_uuid=True), ForeignKey("expense_categories.id", ondelete="RESTRICT"), nullable=True)
+    expense_subcategory_id = Column(UUID(as_uuid=True), ForeignKey("expense_subcategories.id", ondelete="RESTRICT"), nullable=True)
     vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT"), nullable=True)
     amount_cash = Column(Numeric(14, 2), nullable=False, default=0)
     amount_upi = Column(Numeric(14, 2), nullable=False, default=0)
@@ -218,6 +235,7 @@ class Expense(Base):
 
     # Relationships
     expense_category = relationship("ExpenseCategory", back_populates="expenses")
+    expense_subcategory = relationship("ExpenseSubcategory", back_populates="expenses")
     vendor = relationship("Vendor", back_populates="expenses")
 
 
@@ -315,6 +333,7 @@ class ManufacturingBatch(Base):
     batch_code = Column(Text, unique=True, nullable=True)
     batch_date = Column(Date, nullable=False)
     notes = Column(Text, nullable=True)
+    byproducts = Column(JSON, nullable=True)  # Store byproducts as JSON: [{"cake_category": "Groundnut", "cake_name": "Groundnut cake", "quantity": 100, "unit": "kg"}]
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     # Relationships

@@ -22,6 +22,7 @@ from app.models import (
     Product,
     ProductVariant,
     ExpenseCategory,
+    ExpenseSubcategory,
     Purchase,
     PurchaseItem,
     Expense,

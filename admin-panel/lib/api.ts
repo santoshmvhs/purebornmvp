@@ -505,8 +505,19 @@ export const expensesApi = {
     }
   },
   
-  createCategory: async (data: { name: string }) => {
+  createCategory: async (data: { name: string; description?: string }) => {
     const response = await api.post('/expenses/categories', data);
+    return response.data;
+  },
+  
+  getSubcategories: async (categoryId?: string) => {
+    const params = categoryId ? { category_id: categoryId } : {};
+    const response = await api.get('/expenses/subcategories', { params });
+    return response.data;
+  },
+  
+  createSubcategory: async (data: { category_id: string; name: string; description?: string }) => {
+    const response = await api.post('/expenses/subcategories', data);
     return response.data;
   },
 };

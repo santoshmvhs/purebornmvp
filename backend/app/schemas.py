@@ -534,11 +534,48 @@ class PurchaseWithItems(PurchaseRead):
 # Expense Schemas
 # ============================================================================
 
+class ExpenseCategoryBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class ExpenseCategoryCreate(ExpenseCategoryBase):
+    pass
+
+
+class ExpenseCategoryRead(ExpenseCategoryBase):
+    id: UUID
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExpenseSubcategoryBase(BaseModel):
+    category_id: UUID
+    name: str
+    description: Optional[str] = None
+
+
+class ExpenseSubcategoryCreate(ExpenseSubcategoryBase):
+    pass
+
+
+class ExpenseSubcategoryRead(ExpenseSubcategoryBase):
+    id: UUID
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExpenseCategoryWithSubcategories(ExpenseCategoryRead):
+    subcategories: List[ExpenseSubcategoryRead] = []
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ExpenseCreate(BaseModel):
     date: date
     name: str
     description: Optional[str] = None
     expense_category_id: Optional[UUID] = None
+    expense_subcategory_id: Optional[UUID] = None
     vendor_id: Optional[UUID] = None
     amount_cash: float = Field(default=0, ge=0)
     amount_upi: float = Field(default=0, ge=0)
@@ -552,6 +589,7 @@ class ExpenseRead(BaseModel):
     name: str
     description: Optional[str]
     expense_category_id: Optional[UUID]
+    expense_subcategory_id: Optional[UUID]
     vendor_id: Optional[UUID]
     amount_cash: float
     amount_upi: float
@@ -736,12 +774,20 @@ class ManufacturingOutputRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ManufacturingByproductCreate(BaseModel):
+    cake_category: str  # e.g., 'Groundnut', 'Coconut'
+    cake_name: str  # e.g., 'Groundnut cake'
+    quantity: float = Field(gt=0, description="Quantity in kg")
+    unit: str = "kg"
+
+
 class ManufacturingBatchCreate(BaseModel):
     batch_code: Optional[str] = None
     batch_date: date
     notes: Optional[str] = None
     inputs: List[ManufacturingInputCreate]
     outputs: List[ManufacturingOutputCreate]
+    byproducts: Optional[List[ManufacturingByproductCreate]] = []
 
 
 class ManufacturingBatchRead(BaseModel):

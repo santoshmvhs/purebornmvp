@@ -11,8 +11,12 @@ from uuid import UUID
 from decimal import Decimal
 
 from app.database import get_db
-from app.models import User, Expense, ExpenseCategory, Vendor
-from app.schemas import ExpenseCreate, ExpenseRead, ExpenseCategoryCreate, ExpenseCategoryRead
+from app.models import User, Expense, ExpenseCategory, ExpenseSubcategory, Vendor
+from app.schemas import (
+    ExpenseCreate, ExpenseRead, 
+    ExpenseCategoryCreate, ExpenseCategoryRead, ExpenseCategoryWithSubcategories,
+    ExpenseSubcategoryCreate, ExpenseSubcategoryRead
+)
 from app.deps import get_current_active_user
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
@@ -71,6 +75,7 @@ async def create_expense(
             name=expense_data.name,
             description=expense_data.description,
             expense_category_id=expense_data.expense_category_id,
+            expense_subcategory_id=expense_data.expense_subcategory_id,
             vendor_id=expense_data.vendor_id,
             amount_cash=float(amount_cash),
             amount_upi=float(amount_upi),
@@ -223,6 +228,7 @@ async def update_expense(
         expense.name = expense_data.name
         expense.description = expense_data.description
         expense.expense_category_id = expense_data.expense_category_id
+        expense.expense_subcategory_id = expense_data.expense_subcategory_id
         expense.vendor_id = expense_data.vendor_id
         expense.amount_cash = float(amount_cash)
         expense.amount_upi = float(amount_upi)
@@ -283,24 +289,31 @@ async def create_expense_category(
     """
     Create a new expense category.
     """
-    category = ExpenseCategory(name=category_data.name)
+    category = ExpenseCategory(
+        name=category_data.name,
+        description=category_data.description
+    )
     db.add(category)
     await db.commit()
     await db.refresh(category)
     return category
 
 
-@router.get("/categories", response_model=List[ExpenseCategoryRead])
+@router.get("/categories", response_model=List[ExpenseCategoryWithSubcategories])
 async def list_expense_categories(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    List all expense categories.
+    List all expense categories with their subcategories.
     """
     try:
-        result = await db.execute(select(ExpenseCategory).order_by(ExpenseCategory.name))
-        categories = result.scalars().all()
+        result = await db.execute(
+            select(ExpenseCategory)
+            .options(selectinload(ExpenseCategory.subcategories))
+            .order_by(ExpenseCategory.name)
+        )
+        categories = result.scalars().unique().all()
         # Return empty list if no categories
         if not categories:
             return []
@@ -309,4 +322,54 @@ async def list_expense_categories(
     except Exception as e:
         # Return empty list on any error to prevent 422
         return []
+
+
+@router.post("/subcategories", response_model=ExpenseSubcategoryRead, status_code=status.HTTP_201_CREATED)
+async def create_expense_subcategory(
+    subcategory_data: ExpenseSubcategoryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Create a new expense subcategory.
+    """
+    # Validate category exists
+    category_result = await db.execute(
+        select(ExpenseCategory).where(ExpenseCategory.id == subcategory_data.category_id)
+    )
+    category = category_result.scalar_one_or_none()
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Expense category not found"
+        )
+    
+    subcategory = ExpenseSubcategory(
+        category_id=subcategory_data.category_id,
+        name=subcategory_data.name,
+        description=subcategory_data.description
+    )
+    db.add(subcategory)
+    await db.commit()
+    await db.refresh(subcategory)
+    return subcategory
+
+
+@router.get("/subcategories", response_model=List[ExpenseSubcategoryRead])
+async def list_expense_subcategories(
+    category_id: Optional[UUID] = Query(None, description="Filter by category ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    List all expense subcategories, optionally filtered by category.
+    """
+    query = select(ExpenseSubcategory)
+    if category_id:
+        query = query.where(ExpenseSubcategory.category_id == category_id)
+    query = query.order_by(ExpenseSubcategory.name)
+    
+    result = await db.execute(query)
+    subcategories = result.scalars().all()
+    return subcategories
 

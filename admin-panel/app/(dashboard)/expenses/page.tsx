@@ -39,6 +39,15 @@ interface Expense {
 interface ExpenseCategory {
   id: string;
   name: string;
+  description?: string | null;
+  subcategories?: ExpenseSubcategory[];
+}
+
+interface ExpenseSubcategory {
+  id: string;
+  category_id: string;
+  name: string;
+  description?: string | null;
 }
 
 interface Vendor {
@@ -49,6 +58,7 @@ interface Vendor {
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [subcategories, setSubcategories] = useState<ExpenseSubcategory[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -58,6 +68,7 @@ export default function ExpensesPage() {
     name: '',
     description: '',
     expense_category_id: '',
+    expense_subcategory_id: '',
     vendor_id: '',
     total_amount: '',
     amount_cash: '',
@@ -117,6 +128,7 @@ export default function ExpensesPage() {
         name: formData.name,
         description: formData.description || undefined,
         expense_category_id: formData.expense_category_id || undefined,
+        expense_subcategory_id: formData.expense_subcategory_id || undefined,
         vendor_id: formData.vendor_id || undefined,
         amount_cash: parseFloat(formData.amount_cash) || 0,
         amount_upi: parseFloat(formData.amount_upi) || 0,
@@ -148,6 +160,7 @@ export default function ExpensesPage() {
       name: expense.name,
       description: expense.description || '',
       expense_category_id: expense.expense_category_id || '',
+      expense_subcategory_id: (expense as any).expense_subcategory_id || '',
       vendor_id: expense.vendor_id || '',
       total_amount: expense.total_amount.toString(),
       amount_cash: expense.amount_cash.toString(),
@@ -155,7 +168,16 @@ export default function ExpensesPage() {
       amount_card: expense.amount_card.toString(),
       amount_credit: expense.balance_due.toString(), // Credit equals balance due
     });
+    // Load subcategories for selected category
+    if (expense.expense_category_id) {
+      loadSubcategories(expense.expense_category_id);
+    }
     setIsDialogOpen(true);
+  };
+  
+  const handleCategoryChange = (categoryId: string) => {
+    setFormData({ ...formData, expense_category_id: categoryId, expense_subcategory_id: '' });
+    loadSubcategories(categoryId);
   };
 
   const handleDelete = async (id: string) => {
@@ -411,7 +433,7 @@ export default function ExpensesPage() {
                     <select
                       id="expense_category_id"
                       value={formData.expense_category_id}
-                      onChange={(e) => setFormData({ ...formData, expense_category_id: e.target.value })}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
                       <option value="">Select Category (Optional)</option>
@@ -423,21 +445,40 @@ export default function ExpensesPage() {
                     </select>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="vendor_id">Vendor</Label>
+                    <Label htmlFor="expense_subcategory_id">Subcategory</Label>
                     <select
-                      id="vendor_id"
-                      value={formData.vendor_id}
-                      onChange={(e) => setFormData({ ...formData, vendor_id: e.target.value })}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      id="expense_subcategory_id"
+                      value={formData.expense_subcategory_id}
+                      onChange={(e) => setFormData({ ...formData, expense_subcategory_id: e.target.value })}
+                      disabled={!formData.expense_category_id}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <option value="">Select Vendor (Optional)</option>
-                      {vendors.map((vendor) => (
-                        <option key={vendor.id} value={vendor.id}>
-                          {vendor.name}
-                        </option>
-                      ))}
+                      <option value="">Select Subcategory (Optional)</option>
+                      {subcategories
+                        .filter(sub => sub.category_id === formData.expense_category_id)
+                        .map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name}
+                          </option>
+                        ))}
                     </select>
                   </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="vendor_id">Vendor</Label>
+                  <select
+                    id="vendor_id"
+                    value={formData.vendor_id}
+                    onChange={(e) => setFormData({ ...formData, vendor_id: e.target.value })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="">Select Vendor (Optional)</option>
+                    {vendors.map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="total_amount">Total Amount *</Label>
@@ -735,6 +776,8 @@ export default function ExpensesPage() {
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Subcategory</TableHead>
                 <TableHead className="text-right">Total Amount</TableHead>
                 <TableHead className="text-right">Paid</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
@@ -744,42 +787,48 @@ export default function ExpensesPage() {
             <TableBody>
               {expenses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">
                     No expenses found
                   </TableCell>
                 </TableRow>
               ) : (
-                expenses.map((expense) => (
-                  <TableRow key={expense.id}>
-                    <TableCell>{format(new Date(expense.date), 'dd MMM yyyy')}</TableCell>
-                    <TableCell className="font-medium">{expense.name}</TableCell>
-                    <TableCell className="text-right">₹{expense.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</TableCell>
-                    <TableCell className="text-right">₹{expense.total_paid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</TableCell>
-                    <TableCell className="text-right">
-                      <span className={expense.balance_due > 0 ? 'text-orange-400' : 'text-green-400'}>
-                        ₹{expense.balance_due.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEdit(expense)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(expense.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                expenses.map((expense) => {
+                  const category = categories.find(c => c.id === expense.expense_category_id);
+                  const subcategory = subcategories.find(s => s.id === (expense as any).expense_subcategory_id);
+                  return (
+                    <TableRow key={expense.id}>
+                      <TableCell>{format(new Date(expense.date), 'dd MMM yyyy')}</TableCell>
+                      <TableCell className="font-medium">{expense.name}</TableCell>
+                      <TableCell>{category?.name || '-'}</TableCell>
+                      <TableCell>{subcategory?.name || '-'}</TableCell>
+                      <TableCell className="text-right">₹{expense.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right">₹{expense.total_paid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right">
+                        <span className={expense.balance_due > 0 ? 'text-orange-400' : 'text-green-400'}>
+                          ₹{expense.balance_due.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(expense)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(expense.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

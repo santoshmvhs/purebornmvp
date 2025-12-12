@@ -95,6 +95,14 @@ export default function ManufacturingPage() {
       quantity: string;
     }>;
   }>>([]);
+  
+  // Byproducts (cake) section
+  const [byproducts, setByproducts] = useState<Array<{
+    cake_category: string;
+    cake_name: string;
+    quantity: string;
+    unit: string;
+  }>>([]);
 
   useEffect(() => {
     loadBatches();
@@ -209,6 +217,12 @@ export default function ManufacturingPage() {
           rate: parseFloat(inp.rate),
         })),
         outputs: outputData,
+        byproducts: byproducts.filter(bp => bp.cake_category && bp.cake_name && bp.quantity).map(bp => ({
+          cake_category: bp.cake_category,
+          cake_name: bp.cake_name,
+          quantity: parseFloat(bp.quantity),
+          unit: bp.unit,
+        })),
       };
 
       if (editingBatch) {
@@ -256,6 +270,25 @@ export default function ManufacturingPage() {
       unit: '',
       variant_distributions: [],
     }]);
+  };
+
+  const addByproduct = () => {
+    setByproducts([...byproducts, {
+      cake_category: '',
+      cake_name: '',
+      quantity: '',
+      unit: 'kg',
+    }]);
+  };
+
+  const removeByproduct = (index: number) => {
+    setByproducts(byproducts.filter((_, i) => i !== index));
+  };
+
+  const updateByproduct = (index: number, field: string, value: string) => {
+    const updated = [...byproducts];
+    updated[index] = { ...updated[index], [field]: value };
+    setByproducts(updated);
   };
 
   const removeProductOutput = (index: number) => {
@@ -448,6 +481,18 @@ export default function ManufacturingPage() {
         setOutputs([]);
       }
       
+      // Load byproducts
+      if (fullBatch.byproducts && Array.isArray(fullBatch.byproducts)) {
+        setByproducts(fullBatch.byproducts.map((bp: any) => ({
+          cake_category: bp.cake_category || '',
+          cake_name: bp.cake_name || '',
+          quantity: bp.quantity?.toString() || '',
+          unit: bp.unit || 'kg',
+        })));
+      } else {
+        setByproducts([]);
+      }
+      
       setIsDialogOpen(true);
     } catch (error) {
       logger.error('Failed to load batch details:', error);
@@ -478,6 +523,7 @@ export default function ManufacturingPage() {
     setInputs([]);
     setOutputs([]);
     setProductOutputs([]);
+    setByproducts([]);
     setShowPurchaseSelector(false);
     setSelectedPurchaseId('');
   };
@@ -753,6 +799,51 @@ export default function ManufacturingPage() {
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Byproducts Section */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Byproducts (Cake)</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addByproduct}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Byproduct
+                    </Button>
+                  </div>
+                  {byproducts.map((byproduct, index) => (
+                    <div key={index} className="grid grid-cols-5 gap-2 p-3 border rounded-lg">
+                      <Input
+                        placeholder="Category (e.g., Groundnut)"
+                        value={byproduct.cake_category}
+                        onChange={(e) => updateByproduct(index, 'cake_category', e.target.value)}
+                      />
+                      <Input
+                        placeholder="Cake Name (e.g., Groundnut cake)"
+                        value={byproduct.cake_name}
+                        onChange={(e) => updateByproduct(index, 'cake_name', e.target.value)}
+                      />
+                      <Input
+                        type="number"
+                        step="0.001"
+                        placeholder="Quantity"
+                        value={byproduct.quantity}
+                        onChange={(e) => updateByproduct(index, 'quantity', e.target.value)}
+                      />
+                      <Input
+                        placeholder="Unit"
+                        value={byproduct.unit}
+                        onChange={(e) => updateByproduct(index, 'unit', e.target.value)}
+                      />
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeByproduct(index)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {byproducts.length === 0 && (
+                    <div className="text-sm text-muted-foreground p-3 border rounded-lg text-center">
+                      No byproducts added. Click "Add Byproduct" to record cake production.
+                    </div>
+                  )}
                 </div>
               </div>
               <DialogFooter>

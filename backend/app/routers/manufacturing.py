@@ -84,10 +84,23 @@ async def create_manufacturing_batch(
                     )
         
         # Create batch
+        byproducts_json = None
+        if batch_data.byproducts:
+            byproducts_json = [
+                {
+                    "cake_category": bp.cake_category,
+                    "cake_name": bp.cake_name,
+                    "quantity": float(bp.quantity),
+                    "unit": bp.unit,
+                }
+                for bp in batch_data.byproducts
+            ]
+        
         batch = ManufacturingBatch(
             batch_code=batch_data.batch_code,
             batch_date=batch_data.batch_date,
             notes=batch_data.notes,
+            byproducts=byproducts_json,
         )
         db.add(batch)
         await db.flush()  # Get batch.id without committing
@@ -266,6 +279,19 @@ async def update_manufacturing_batch(
         batch.batch_code = batch_data.batch_code
         batch.batch_date = batch_data.batch_date
         batch.notes = batch_data.notes
+        
+        # Update byproducts
+        if batch_data.byproducts is not None:
+            byproducts_json = [
+                {
+                    "cake_category": bp.cake_category,
+                    "cake_name": bp.cake_name,
+                    "quantity": float(bp.quantity),
+                    "unit": bp.unit,
+                }
+                for bp in batch_data.byproducts
+            ]
+            batch.byproducts = byproducts_json
         
         # Note: For a full implementation, you'd need to handle updating inputs/outputs
         # and adjusting inventory movements. This is a simplified version.
