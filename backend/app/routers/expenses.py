@@ -107,7 +107,7 @@ async def create_expense(
         )
 
 
-@router.get("", response_model=List[ExpenseRead])
+@router.get("")
 async def list_expenses(
     start_date: Optional[date] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
@@ -163,14 +163,16 @@ async def list_expenses(
             expense_list = []
             for row in rows:
                 try:
+                    # Return as dict to avoid Pydantic validation issues
+                    # FastAPI will serialize date/datetime objects automatically
                     expense_dict = {
-                        'id': row[0],
-                        'date': row[1],
-                        'name': row[2] or '',
-                        'description': row[3] if row[3] else None,
-                        'expense_category_id': row[4] if row[4] else None,
-                        'expense_subcategory_id': row[5] if row[5] else None,  # Column exists
-                        'vendor_id': row[6] if row[6] else None,
+                        'id': str(row[0]) if row[0] else None,
+                        'date': row[1],  # Date object - FastAPI will serialize to ISO string
+                        'name': str(row[2]) if row[2] else '',
+                        'description': str(row[3]) if row[3] else None,
+                        'expense_category_id': str(row[4]) if row[4] else None,
+                        'expense_subcategory_id': str(row[5]) if row[5] else None,  # Column exists
+                        'vendor_id': str(row[6]) if row[6] else None,
                         'amount_cash': float(row[7]) if row[7] is not None else 0.0,
                         'amount_upi': float(row[8]) if row[8] is not None else 0.0,
                         'amount_card': float(row[9]) if row[9] is not None else 0.0,
@@ -178,11 +180,11 @@ async def list_expenses(
                         'total_amount': float(row[11]) if row[11] is not None else 0.0,
                         'total_paid': float(row[12]) if row[12] is not None else 0.0,
                         'balance_due': float(row[13]) if row[13] is not None else 0.0,
-                        'created_at': row[14],
+                        'created_at': row[14],  # Datetime object - FastAPI will serialize to ISO string
                     }
-                    expense_list.append(ExpenseRead(**expense_dict))
+                    expense_list.append(expense_dict)
                 except Exception as e:
-                    logger.error(f"Error creating ExpenseRead from row: {str(e)}", exc_info=True)
+                    logger.error(f"Error creating expense dict from row: {str(e)}", exc_info=True)
                     continue
             return expense_list
         except (OperationalError, ProgrammingError) as col_error:
@@ -205,14 +207,16 @@ async def list_expenses(
                 expense_list = []
                 for row in rows:
                     try:
+                        # Return as dict to avoid Pydantic validation issues
+                        # FastAPI will serialize date/datetime objects automatically
                         expense_dict = {
-                            'id': row[0],
-                            'date': row[1],
-                            'name': row[2] or '',
-                            'description': row[3] if row[3] else None,
-                            'expense_category_id': row[4] if row[4] else None,
+                            'id': str(row[0]) if row[0] else None,
+                            'date': row[1],  # Date object - FastAPI will serialize to ISO string
+                            'name': str(row[2]) if row[2] else '',
+                            'description': str(row[3]) if row[3] else None,
+                            'expense_category_id': str(row[4]) if row[4] else None,
                             'expense_subcategory_id': None,  # Column doesn't exist
-                            'vendor_id': row[5] if row[5] else None,
+                            'vendor_id': str(row[5]) if row[5] else None,
                             'amount_cash': float(row[6]) if row[6] is not None else 0.0,
                             'amount_upi': float(row[7]) if row[7] is not None else 0.0,
                             'amount_card': float(row[8]) if row[8] is not None else 0.0,
@@ -220,11 +224,11 @@ async def list_expenses(
                             'total_amount': float(row[10]) if row[10] is not None else 0.0,
                             'total_paid': float(row[11]) if row[11] is not None else 0.0,
                             'balance_due': float(row[12]) if row[12] is not None else 0.0,
-                            'created_at': row[13],
+                            'created_at': row[13],  # Datetime object - FastAPI will serialize to ISO string
                         }
-                        expense_list.append(ExpenseRead(**expense_dict))
+                        expense_list.append(expense_dict)
                     except Exception as e:
-                        logger.error(f"Error creating ExpenseRead from row: {str(e)}", exc_info=True)
+                        logger.error(f"Error creating expense dict from row: {str(e)}", exc_info=True)
                         continue
                 return expense_list
             raise  # Re-raise if it's a different error
