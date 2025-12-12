@@ -180,65 +180,113 @@ async def list_expenses(
 ):
     """
     List expenses with optional filtering and pagination.
-    Uses SQLAlchemy ORM with safe attribute access for optional columns.
+    Uses raw SQL to avoid SQLAlchemy model issues with missing columns.
     """
     try:
-        # Build query using SQLAlchemy ORM
-        query = select(Expense)
+        # Build WHERE clause for filters
+        where_clauses = []
+        params = {"limit": limit, "offset": (page - 1) * limit}
         
-        # Apply filters
         if start_date:
-            query = query.where(Expense.date >= start_date)
+            where_clauses.append("date >= :start_date")
+            params["start_date"] = start_date
         if end_date:
-            query = query.where(Expense.date <= end_date)
+            where_clauses.append("date <= :end_date")
+            params["end_date"] = end_date
         if category_id:
-            query = query.where(Expense.expense_category_id == category_id)
+            where_clauses.append("expense_category_id = :category_id")
+            params["category_id"] = category_id
         if vendor_id:
-            query = query.where(Expense.vendor_id == vendor_id)
+            where_clauses.append("vendor_id = :vendor_id")
+            params["vendor_id"] = vendor_id
         
-        # Order and paginate
-        query = query.order_by(Expense.created_at.desc())
-        offset = (page - 1) * limit
-        query = query.offset(offset).limit(limit)
+        where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
         
-        # Execute query
-        result = await db.execute(query)
-        expenses = result.scalars().all()
-        
-        # Convert to dicts manually to avoid Pydantic validation issues
-        expense_list = []
-        for expense in expenses:
-            try:
-                expense_dict = {
-                    'id': str(expense.id),
-                    'date': expense.date.isoformat() if expense.date else None,
-                    'name': expense.name or '',
-                    'description': expense.description if expense.description else None,
-                    'expense_category_id': str(expense.expense_category_id) if expense.expense_category_id else None,
-                    'expense_subcategory_id': str(expense.expense_subcategory_id) if hasattr(expense, 'expense_subcategory_id') and expense.expense_subcategory_id else None,
-                    'vendor_id': str(expense.vendor_id) if expense.vendor_id else None,
-                    'amount_cash': float(expense.amount_cash) if expense.amount_cash is not None else 0.0,
-                    'amount_upi': float(expense.amount_upi) if expense.amount_upi is not None else 0.0,
-                    'amount_card': float(expense.amount_card) if expense.amount_card is not None else 0.0,
-                    'amount_credit': float(expense.amount_credit) if expense.amount_credit is not None else 0.0,
-                    'total_amount': float(expense.total_amount) if expense.total_amount is not None else 0.0,
-                    'total_paid': float(expense.total_paid) if expense.total_paid is not None else 0.0,
-                    'balance_due': float(expense.balance_due) if expense.balance_due is not None else 0.0,
-                    'created_at': expense.created_at.isoformat() if expense.created_at else None,
-                }
-                expense_list.append(expense_dict)
-            except Exception as e:
-                logger.error(f"Error serializing expense {expense.id}: {str(e)}", exc_info=True)
-                continue
-        
-        return Response(content=json.dumps(expense_list, default=str), media_type="application/json")
-    except (OperationalError, ProgrammingError) as e:
-        # Database error - column might not exist
-        logger.warning(f"Database error listing expenses: {str(e)}")
-        return Response(content=json.dumps([]), media_type="application/json")
+        # Try to select with expense_subcategory_id first
+        try:
+            sql = text(f"""
+                SELECT id, date, name, description, expense_category_id, expense_subcategory_id, vendor_id,
+                       amount_cash, amount_upi, amount_card, amount_credit,
+                       total_amount, total_paid, balance_due, created_at
+                FROM expenses
+                {where_sql}
+                ORDER BY created_at DESC
+                LIMIT :limit OFFSET :offset
+            """)
+            result = await db.execute(sql, params)
+            rows = result.fetchall()
+            
+            expense_list = []
+            for row in rows:
+                try:
+                    expense_dict = {
+                        'id': str(row[0]) if row[0] else None,
+                        'date': row[1].isoformat() if row[1] else None,
+                        'name': str(row[2]) if row[2] else '',
+                        'description': str(row[3]) if row[3] else None,
+                        'expense_category_id': str(row[4]) if row[4] else None,
+                        'expense_subcategory_id': str(row[5]) if row[5] else None,
+                        'vendor_id': str(row[6]) if row[6] else None,
+                        'amount_cash': float(row[7]) if row[7] is not None else 0.0,
+                        'amount_upi': float(row[8]) if row[8] is not None else 0.0,
+                        'amount_card': float(row[9]) if row[9] is not None else 0.0,
+                        'amount_credit': float(row[10]) if row[10] is not None else 0.0,
+                        'total_amount': float(row[11]) if row[11] is not None else 0.0,
+                        'total_paid': float(row[12]) if row[12] is not None else 0.0,
+                        'balance_due': float(row[13]) if row[13] is not None else 0.0,
+                        'created_at': row[14].isoformat() if row[14] else None,
+                    }
+                    expense_list.append(expense_dict)
+                except Exception as e:
+                    logger.error(f"Error creating expense dict from row: {str(e)}", exc_info=True)
+                    continue
+            return Response(content=json.dumps(expense_list, default=str), media_type="application/json")
+        except (OperationalError, ProgrammingError) as col_error:
+            # Column doesn't exist, use query without it
+            error_str = str(col_error).lower()
+            if 'expense_subcategory_id' in error_str or 'column' in error_str or 'does not exist' in error_str:
+                logger.warning("expense_subcategory_id column not found - using query without it")
+                sql = text(f"""
+                    SELECT id, date, name, description, expense_category_id, vendor_id,
+                           amount_cash, amount_upi, amount_card, amount_credit,
+                           total_amount, total_paid, balance_due, created_at
+                    FROM expenses
+                    {where_sql}
+                    ORDER BY created_at DESC
+                    LIMIT :limit OFFSET :offset
+                """)
+                result = await db.execute(sql, params)
+                rows = result.fetchall()
+                
+                expense_list = []
+                for row in rows:
+                    try:
+                        expense_dict = {
+                            'id': str(row[0]) if row[0] else None,
+                            'date': row[1].isoformat() if row[1] else None,
+                            'name': str(row[2]) if row[2] else '',
+                            'description': str(row[3]) if row[3] else None,
+                            'expense_category_id': str(row[4]) if row[4] else None,
+                            'expense_subcategory_id': None,  # Column doesn't exist
+                            'vendor_id': str(row[5]) if row[5] else None,
+                            'amount_cash': float(row[6]) if row[6] is not None else 0.0,
+                            'amount_upi': float(row[7]) if row[7] is not None else 0.0,
+                            'amount_card': float(row[8]) if row[8] is not None else 0.0,
+                            'amount_credit': float(row[9]) if row[9] is not None else 0.0,
+                            'total_amount': float(row[10]) if row[10] is not None else 0.0,
+                            'total_paid': float(row[11]) if row[11] is not None else 0.0,
+                            'balance_due': float(row[12]) if row[12] is not None else 0.0,
+                            'created_at': row[13].isoformat() if row[13] else None,
+                        }
+                        expense_list.append(expense_dict)
+                    except Exception as e:
+                        logger.error(f"Error creating expense dict from row: {str(e)}", exc_info=True)
+                        continue
+                return Response(content=json.dumps(expense_list, default=str), media_type="application/json")
+            raise  # Re-raise if it's a different error
     except Exception as e:
         logger.error(f"Error listing expenses: {str(e)}", exc_info=True)
-        return Response(content=json.dumps([]), media_type="application/json")
+        return Response(content=json.dumps([], default=str), media_type="application/json")
 
 
 @router.get("/{expense_id}", response_model=ExpenseRead)
@@ -468,41 +516,41 @@ async def list_expense_categories(
 ):
     """
     List all expense categories.
-    Returns a list of expense categories without relationships to avoid 422 errors.
+    Uses raw SQL to avoid SQLAlchemy model issues.
     """
     try:
-        result = await db.execute(
-            select(ExpenseCategory).order_by(ExpenseCategory.name)
-        )
-        categories = result.scalars().all()
-        # Return empty list if no categories
-        if not categories:
-            return Response(content=json.dumps([]), media_type="application/json")
-        # Manually construct response as dicts to avoid any validation issues
+        # Use raw SQL to avoid any SQLAlchemy model/relationship issues
+        sql = text("""
+            SELECT id, name, description, created_at
+            FROM expense_categories
+            ORDER BY name
+        """)
+        result = await db.execute(sql)
+        rows = result.fetchall()
+        
         category_list = []
-        for cat in categories:
+        for row in rows:
             try:
-                # Return as dict to avoid Pydantic validation issues
-                # Ensure all values are JSON-serializable
                 category_dict = {
-                    "id": str(cat.id) if cat.id else None,
-                    "name": str(cat.name) if cat.name else "",
-                    "description": str(cat.description) if cat.description else None,
-                    "created_at": cat.created_at.isoformat() if cat.created_at else None
+                    "id": str(row[0]) if row[0] else None,
+                    "name": str(row[1]) if row[1] else "",
+                    "description": str(row[2]) if row[2] else None,
+                    "created_at": row[3].isoformat() if row[3] else None
                 }
                 category_list.append(category_dict)
             except Exception as e:
-                logger.warning(f"Error serializing category {cat.id if hasattr(cat, 'id') else 'unknown'}: {str(e)}", exc_info=True)
+                logger.warning(f"Error serializing category row: {str(e)}", exc_info=True)
                 continue
-        return Response(content=json.dumps(category_list), media_type="application/json")
+        
+        return Response(content=json.dumps(category_list, default=str), media_type="application/json")
     except (OperationalError, ProgrammingError) as e:
         # Table might not exist yet
         logger.warning(f"expense_categories table might not exist: {str(e)}")
-        return Response(content=json.dumps([]), media_type="application/json")
+        return Response(content=json.dumps([], default=str), media_type="application/json")
     except Exception as e:
         logger.error(f"Error listing expense categories: {str(e)}", exc_info=True)
         # Return empty list on any error to prevent 422
-        return Response(content=json.dumps([]), media_type="application/json")
+        return Response(content=json.dumps([], default=str), media_type="application/json")
 
 
 @router.post("/subcategories", response_model=ExpenseSubcategoryRead, status_code=status.HTTP_201_CREATED)
