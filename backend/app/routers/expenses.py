@@ -434,8 +434,7 @@ async def list_expense_categories(
 ):
     """
     List all expense categories.
-    Note: Returns ExpenseCategoryRead instead of ExpenseCategoryWithSubcategories
-    to avoid 422 errors if subcategories table doesn't exist yet.
+    Returns a list of expense categories without relationships to avoid 422 errors.
     """
     try:
         result = await db.execute(
@@ -449,14 +448,16 @@ async def list_expense_categories(
         category_list = []
         for cat in categories:
             try:
-                category_list.append(ExpenseCategoryRead(
+                # Use ExpenseCategoryRead to ensure proper validation
+                category_read = ExpenseCategoryRead(
                     id=cat.id,
                     name=cat.name,
                     description=cat.description,
                     created_at=cat.created_at
-                ))
+                )
+                category_list.append(category_read)
             except Exception as e:
-                logger.warning(f"Error serializing category {cat.id}: {str(e)}")
+                logger.warning(f"Error serializing category {cat.id}: {str(e)}", exc_info=True)
                 continue
         return category_list
     except (OperationalError, ProgrammingError) as e:
