@@ -121,6 +121,7 @@ async def list_expenses(
     List expenses with optional filtering and pagination.
     """
     try:
+        # Try using SQLAlchemy ORM first
         query = select(Expense)
         
         # Date range filtering
@@ -203,16 +204,36 @@ async def list_expenses(
             # Database migration not run - try querying without the problematic column
             logger.warning("expense_subcategory_id column not found - migration may not have been run. Using fallback query.")
             try:
+                # Build WHERE clause for filters
+                where_clauses = []
+                params = {"limit": limit, "offset": offset}
+                
+                if start_date:
+                    where_clauses.append("date >= :start_date")
+                    params["start_date"] = start_date
+                if end_date:
+                    where_clauses.append("date <= :end_date")
+                    params["end_date"] = end_date
+                if category_id:
+                    where_clauses.append("expense_category_id = :category_id")
+                    params["category_id"] = category_id
+                if vendor_id:
+                    where_clauses.append("vendor_id = :vendor_id")
+                    params["vendor_id"] = vendor_id
+                
+                where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+                
                 # Use raw SQL to select only columns that exist
-                sql = text("""
+                sql = text(f"""
                     SELECT id, date, name, description, expense_category_id, vendor_id,
                            amount_cash, amount_upi, amount_card, amount_credit,
                            total_amount, total_paid, balance_due, created_at
                     FROM expenses
+                    {where_sql}
                     ORDER BY created_at DESC
                     LIMIT :limit OFFSET :offset
                 """)
-                result = await db.execute(sql, {"limit": limit, "offset": offset})
+                result = await db.execute(sql, params)
                 rows = result.fetchall()
                 
                 expense_list = []
@@ -239,6 +260,7 @@ async def list_expenses(
             except Exception as e2:
                 logger.error(f"Error in fallback query: {str(e2)}", exc_info=True)
                 return []
+        logger.error(f"Database error listing expenses: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error listing expenses: {str(e)}"
@@ -423,9 +445,26 @@ async def list_expense_categories(
         # Return empty list if no categories
         if not categories:
             return []
-        # Return categories - FastAPI will serialize via response_model
-        return list(categories)
+        # Manually construct response to avoid relationship access issues
+        category_list = []
+        for cat in categories:
+            try:
+                category_list.append(ExpenseCategoryRead(
+                    id=cat.id,
+                    name=cat.name,
+                    description=cat.description,
+                    created_at=cat.created_at
+                ))
+            except Exception as e:
+                logger.warning(f"Error serializing category {cat.id}: {str(e)}")
+                continue
+        return category_list
+    except (OperationalError, ProgrammingError) as e:
+        # Table might not exist yet
+        logger.warning(f"expense_categories table might not exist: {str(e)}")
+        return []
     except Exception as e:
+        logger.error(f"Error listing expense categories: {str(e)}", exc_info=True)
         # Return empty list on any error to prevent 422
         return []
 
@@ -461,6 +500,32 @@ async def create_expense_subcategory(
     return subcategory
 
 
+@router.get("/subcategories/{category_id}", response_model=List[ExpenseSubcategoryRead])
+async def list_expense_subcategories_by_category(
+    category_id: UUID = Path(..., description="Filter by category ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    List all expense subcategories for a given category (path parameter version).
+    """
+    try:
+        query = select(ExpenseSubcategory).where(
+            ExpenseSubcategory.category_id == category_id
+        ).order_by(ExpenseSubcategory.name)
+        
+        result = await db.execute(query)
+        subcategories = result.scalars().all()
+        return list(subcategories)
+    except (OperationalError, ProgrammingError) as e:
+        # Table might not exist yet
+        logger.warning(f"expense_subcategories table might not exist: {str(e)}")
+        return []
+    except Exception as e:
+        logger.error(f"Error listing expense subcategories for category {category_id}: {str(e)}", exc_info=True)
+        return []
+
+
 @router.get("/subcategories", response_model=List[ExpenseSubcategoryRead])
 async def list_expense_subcategories(
     category_id: Optional[UUID] = Query(None, description="Filter by category ID"),
@@ -468,14 +533,22 @@ async def list_expense_subcategories(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    List all expense subcategories, optionally filtered by category.
+    List all expense subcategories, optionally filtered by category (query parameter version).
     """
-    query = select(ExpenseSubcategory)
-    if category_id:
-        query = query.where(ExpenseSubcategory.category_id == category_id)
-    query = query.order_by(ExpenseSubcategory.name)
-    
-    result = await db.execute(query)
-    subcategories = result.scalars().all()
-    return subcategories
+    try:
+        query = select(ExpenseSubcategory)
+        if category_id:
+            query = query.where(ExpenseSubcategory.category_id == category_id)
+        query = query.order_by(ExpenseSubcategory.name)
+        
+        result = await db.execute(query)
+        subcategories = result.scalars().all()
+        return list(subcategories)
+    except (OperationalError, ProgrammingError) as e:
+        # Table might not exist yet
+        logger.warning(f"expense_subcategories table might not exist: {str(e)}")
+        return []
+    except Exception as e:
+        logger.error(f"Error listing expense subcategories: {str(e)}", exc_info=True)
+        return []
 
