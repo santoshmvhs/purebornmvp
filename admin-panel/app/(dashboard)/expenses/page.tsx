@@ -215,6 +215,7 @@ export default function ExpensesPage() {
       name: '',
       description: '',
       expense_category_id: '',
+      expense_subcategory_id: '',
       vendor_id: '',
       total_amount: '',
       amount_cash: '',
@@ -222,6 +223,7 @@ export default function ExpensesPage() {
       amount_card: '',
       amount_credit: '',
     });
+    setSubcategories([]);
   };
 
   // Calculate totals for display
