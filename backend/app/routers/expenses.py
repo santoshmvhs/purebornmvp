@@ -2,7 +2,8 @@
 Expenses router for managing business expenses (async).
 """
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
+import json
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from sqlalchemy.orm import selectinload
@@ -404,7 +405,7 @@ async def list_expense_categories(
         categories = result.scalars().all()
         # Return empty list if no categories
         if not categories:
-            return []
+            return Response(content=json.dumps([]), media_type="application/json")
         # Manually construct response as dicts to avoid any validation issues
         category_list = []
         for cat in categories:
@@ -421,15 +422,15 @@ async def list_expense_categories(
             except Exception as e:
                 logger.warning(f"Error serializing category {cat.id if hasattr(cat, 'id') else 'unknown'}: {str(e)}", exc_info=True)
                 continue
-        return category_list
+        return Response(content=json.dumps(category_list), media_type="application/json")
     except (OperationalError, ProgrammingError) as e:
         # Table might not exist yet
         logger.warning(f"expense_categories table might not exist: {str(e)}")
-        return []
+        return Response(content=json.dumps([]), media_type="application/json")
     except Exception as e:
         logger.error(f"Error listing expense categories: {str(e)}", exc_info=True)
         # Return empty list on any error to prevent 422
-        return []
+        return Response(content=json.dumps([]), media_type="application/json")
 
 
 @router.post("/subcategories", response_model=ExpenseSubcategoryRead, status_code=status.HTTP_201_CREATED)
