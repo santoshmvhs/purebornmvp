@@ -240,7 +240,7 @@ async def list_expenses(
                 except Exception as e:
                     logger.error(f"Error creating expense dict from row: {str(e)}", exc_info=True)
                     continue
-            return Response(content=json.dumps(expense_list, default=str), media_type="application/json")
+            return expense_list
         except (OperationalError, ProgrammingError) as col_error:
             # Column doesn't exist, use query without it
             error_str = str(col_error).lower()
@@ -282,11 +282,11 @@ async def list_expenses(
                     except Exception as e:
                         logger.error(f"Error creating expense dict from row: {str(e)}", exc_info=True)
                         continue
-                return Response(content=json.dumps(expense_list, default=str), media_type="application/json")
+                return expense_list
             raise  # Re-raise if it's a different error
     except Exception as e:
         logger.error(f"Error listing expenses: {str(e)}", exc_info=True)
-        return Response(content=json.dumps([], default=str), media_type="application/json")
+        return []
 
 
 @router.get("/{expense_id}", response_model=ExpenseRead)
@@ -542,15 +542,15 @@ async def list_expense_categories(
                 logger.warning(f"Error serializing category row: {str(e)}", exc_info=True)
                 continue
         
-        return Response(content=json.dumps(category_list, default=str), media_type="application/json")
+        return category_list
     except (OperationalError, ProgrammingError) as e:
         # Table might not exist yet
         logger.warning(f"expense_categories table might not exist: {str(e)}")
-        return Response(content=json.dumps([], default=str), media_type="application/json")
+        return []
     except Exception as e:
         logger.error(f"Error listing expense categories: {str(e)}", exc_info=True)
         # Return empty list on any error to prevent 422
-        return Response(content=json.dumps([], default=str), media_type="application/json")
+        return []
 
 
 @router.post("/subcategories", response_model=ExpenseSubcategoryRead, status_code=status.HTTP_201_CREATED)
