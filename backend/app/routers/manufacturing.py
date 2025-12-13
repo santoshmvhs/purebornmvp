@@ -263,6 +263,8 @@ async def list_manufacturing_batches(
         if 'byproducts' in error_str or 'column' in error_str or 'does not exist' in error_str:
             # Database migration not run - try querying without the problematic column
             logger.warning("byproducts column not found - migration may not have been run. Using fallback query.")
+            # Rollback the failed transaction before trying again
+            await db.rollback()
             try:
                 # Build WHERE clause for filters
                 where_clauses = []

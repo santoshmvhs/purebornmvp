@@ -246,6 +246,8 @@ async def list_expenses(
             error_str = str(col_error).lower()
             if 'expense_subcategory_id' in error_str or 'column' in error_str or 'does not exist' in error_str:
                 logger.warning("expense_subcategory_id column not found - using query without it")
+                # Rollback the failed transaction before trying again
+                await db.rollback()
                 sql = text(f"""
                     SELECT id, date, name, description, expense_category_id, vendor_id,
                            amount_cash, amount_upi, amount_card, amount_credit,
