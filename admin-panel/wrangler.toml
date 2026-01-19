@@ -1,0 +1,13 @@
+# Cloudflare Pages Configuration for Next.js
+# This file helps Cloudflare Pages understand your Next.js build
+# @cloudflare/next-on-pages outputs to .vercel/output/static
+
+name = "pureborn-admin-panel"
+pages_build_output_dir = ".vercel/output/static"
+
+# Compatibility date and flags required for Next.js on Cloudflare Pages
+# compatibility_date is required when using compatibility_flags
+# nodejs_compat is required for @cloudflare/next-on-pages
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
