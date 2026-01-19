@@ -29,6 +29,7 @@ export const api = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true, // Enable sending cookies (httpOnly cookies) with requests
+  timeout: 30000, // 30 second timeout
 });
 
 // Request interceptor
@@ -42,18 +43,29 @@ api.interceptors.request.use(
     
     // Get Supabase session token
     if (typeof window !== 'undefined') {
-      const { supabase } = await import('@/lib/supabase');
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        config.headers.Authorization = `Bearer ${session.access_token}`;
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          config.headers.Authorization = `Bearer ${session.access_token}`;
+        }
+      } catch (error) {
+        console.warn('[API] Failed to get Supabase session:', error);
       }
     }
     
     // withCredentials ensures cookies are sent with cross-origin requests
     config.withCredentials = true;
+    
+    // Log request for debugging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+    }
+    
     return config;
   },
   (error) => {
+    console.error('[API] Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -62,6 +74,24 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Enhanced error logging
+    if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+      const baseUrl = error.config?.baseURL || getApiBaseUrl();
+      const url = error.config?.url || 'unknown';
+      console.error('[API] Network Error:', {
+        method: error.config?.method?.toUpperCase(),
+        url: `${baseUrl}${url}`,
+        message: error.message,
+        code: error.code,
+        request: error.request,
+      });
+      
+      // Check if it's a timeout
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        console.error('[API] Request timeout - server may be slow or unreachable');
+      }
+    }
+    
     if (error.response?.status === 401) {
       // Clear token from localStorage (if exists) and redirect to login
       // Note: httpOnly cookies are cleared by the backend /logout endpoint
@@ -75,8 +105,13 @@ api.interceptors.response.use(
       // Silently handle - this is expected when no counter exists for a date
       // Still reject the promise so components can handle it
     } else if (error.response) {
-      // Only log non-404 errors or errors not related to day-counters
-      // (Axios will still log, but we can minimize noise)
+      // Log server errors
+      console.error('[API] Server Error:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        url: error.config?.url,
+        data: error.response.data,
+      });
     }
     
     return Promise.reject(error);
@@ -582,6 +617,23 @@ export const dashboardApi = {
   getKPIs: async (params?: { start_date?: string; end_date?: string }) => {
     const response = await api.get('/dashboard/kpis', { params });
     return response.data;
+  },
+};
+
+// Health check API
+export const healthApi = {
+  check: async () => {
+    try {
+      const baseUrl = getApiBaseUrl();
+      const response = await api.get('/health', { timeout: 5000 });
+      return { status: 'ok', data: response.data };
+    } catch (error: any) {
+      return { 
+        status: 'error', 
+        error: error.message || 'Health check failed',
+        code: error.code,
+      };
+    }
   },
 };
 

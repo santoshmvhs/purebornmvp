@@ -177,6 +177,14 @@ export function EditPurchaseDialog({ purchase, open, onOpenChange, onSuccess }: 
           })),
       };
 
+      // Validate payload before sending
+      if (!payload.vendor_id) {
+        throw new Error('Vendor is required');
+      }
+      if (!payload.items || payload.items.length === 0) {
+        throw new Error('At least one item is required');
+      }
+
       await purchasesApi.update(purchase.id, payload);
       onSuccess();
       onOpenChange(false);
@@ -191,8 +199,16 @@ export function EditPurchaseDialog({ purchase, open, onOpenChange, onSuccess }: 
         errorMessage = err.response.data?.detail || err.response.data?.message || errorMessage;
       } else if (err.request) {
         // Request was made but no response received (network/CORS error)
-        if (err.message?.includes('CORS') || err.code === 'ERR_NETWORK') {
-          errorMessage = 'Network error: Unable to connect to server. Please check your connection or contact support if the issue persists.';
+        if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
+          errorMessage = 'Network error: Unable to connect to server. Please check:\n' +
+            '1. Your internet connection\n' +
+            '2. If the backend server is running\n' +
+            '3. Browser console for more details\n' +
+            '4. Try refreshing the page';
+        } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+          errorMessage = 'Request timeout: The server took too long to respond. Please try again.';
+        } else if (err.message?.includes('CORS')) {
+          errorMessage = 'CORS error: Cross-origin request blocked. Please contact support.';
         } else {
           errorMessage = 'Network error: ' + (err.message || 'Unable to reach server');
         }
@@ -200,6 +216,19 @@ export function EditPurchaseDialog({ purchase, open, onOpenChange, onSuccess }: 
         // Something else happened
         errorMessage = err.message || errorMessage;
       }
+      
+      // Log detailed error info for debugging
+      console.error('Purchase update error details:', {
+        code: err.code,
+        message: err.message,
+        response: err.response?.data,
+        request: err.request,
+        config: {
+          url: err.config?.url,
+          method: err.config?.method,
+          baseURL: err.config?.baseURL,
+        },
+      });
       
       alert(errorMessage);
     } finally {

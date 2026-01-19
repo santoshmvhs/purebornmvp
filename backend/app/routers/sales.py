@@ -3,7 +3,7 @@ Sales router for creating and managing sales transactions.
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, cast, Date
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, time
@@ -15,7 +15,7 @@ from collections import defaultdict
 
 from app.database import get_db
 from app.models import User, ProductVariant, Sale, SaleItem, Product
-from app.schemas import SaleNewCreate, SaleNewRead, SaleNewWithItems
+from app.schemas import SaleNewCreate, SaleNewRead, SaleNewWithItems, SaleNewUpdate
 from app.deps import get_current_active_user
 import logging
 
@@ -88,10 +88,9 @@ async def create_sale(
                     detail=f"Product variant '{variant.variant_name}' has no price set"
                 )
             
-            # Get GST rate (default to 0 if not available)
-            # Note: GST rate should be configured per product or product variant
-            # For now, we'll use 0 or you can add a gst_rate field to ProductVariant
-            gst_rate = Decimal(0)
+            # Get GST rate from product's HSN code
+            from app.utils.gst_lookup import get_gst_rate_from_hsn
+            gst_rate = Decimal(str(get_gst_rate_from_hsn(variant.product.hsn_code)))
             
             # Calculate line totals
             quantity = Decimal(str(item.quantity))
@@ -124,9 +123,24 @@ async def create_sale(
         total_paid = amount_cash + amount_upi + amount_card
         balance_due = net_amount - total_paid
 
+        # Auto-generate invoice number if not provided
+        invoice_number = sale_data.invoice_number
+        # Handle both None and empty string cases - normalize empty strings to None
+        if invoice_number is None or (isinstance(invoice_number, str) and invoice_number.strip() == ''):
+            # Get the count of sales for today to generate sequential number
+            today = sale_data.invoice_date
+            result = await db.execute(
+                select(func.count(Sale.id))
+                .where(cast(Sale.invoice_date, Date) == today)
+            )
+            today_count = result.scalar() or 0
+            # Format: INV-YYYYMMDD-XXX (e.g., INV-20251228-001)
+            invoice_number = f"INV-{today.strftime('%Y%m%d')}-{str(today_count + 1).zfill(3)}"
+            logger.info(f"Auto-generated invoice number: {invoice_number} for date {today}")
+
         # Create Sale record
         sale = Sale(
-            invoice_number=sale_data.invoice_number,
+            invoice_number=invoice_number,
             invoice_date=sale_data.invoice_date,
             invoice_time=sale_data.invoice_time,
             customer_id=sale_data.customer_id,
@@ -200,6 +214,183 @@ async def get_sale(
             item.product_variant.product_name = item.product_variant.product.name
     
     return sale
+
+
+@router.put("/{sale_id}", response_model=SaleNewWithItems)
+async def update_sale(
+    sale_id: UUID = Path(..., description="Sale ID"),
+    sale_data: SaleNewUpdate = ...,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Update an existing sale transaction.
+    
+    - Updates sale header information
+    - Replaces all items if items are provided
+    - Recalculates totals including GST
+    """
+    try:
+        # Get existing sale with items
+        result = await db.execute(
+            select(Sale)
+            .options(selectinload(Sale.items))
+            .where(Sale.id == sale_id)
+        )
+        sale = result.scalar_one_or_none()
+        
+        if not sale:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Sale not found"
+            )
+        
+        update_data = sale_data.model_dump(exclude_unset=True)
+        
+        # If items are being updated, we need to recalculate everything
+        if 'items' in update_data and update_data['items']:
+            # Delete existing items
+            for item in sale.items:
+                await db.delete(item)
+            await db.flush()
+            
+            # Fetch product variants for new items
+            variant_ids = [item['product_variant_id'] for item in update_data['items']]
+            result = await db.execute(
+                select(ProductVariant)
+                .options(selectinload(ProductVariant.product))
+                .where(ProductVariant.id.in_(variant_ids))
+            )
+            variants = result.scalars().all()
+            
+            if len(variants) != len(variant_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="One or more product variants not found"
+                )
+            
+            variant_map = {v.id: v for v in variants}
+            
+            # Calculate totals with GST
+            total_amount = Decimal(0)
+            total_tax = Decimal(0)
+            sale_items_data = []
+            
+            for item_data in update_data['items']:
+                variant = variant_map[item_data['product_variant_id']]
+                
+                unit_price = variant.selling_price or variant.mrp or Decimal(0)
+                if unit_price == 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Product variant '{variant.variant_name}' has no price set"
+                    )
+                
+                # Get GST rate from product's HSN code
+                from app.utils.gst_lookup import get_gst_rate_from_hsn
+                gst_rate = Decimal(str(get_gst_rate_from_hsn(variant.product.hsn_code)))
+                
+                quantity = Decimal(str(item_data['quantity']))
+                taxable_value = unit_price * quantity
+                gst_amount = taxable_value * (gst_rate / Decimal(100)) if gst_rate > 0 else Decimal(0)
+                line_total = taxable_value + gst_amount
+                
+                total_amount += taxable_value
+                total_tax += gst_amount
+                
+                sale_items_data.append({
+                    "product_variant_id": variant.id,
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "line_total": line_total,
+                    "gst_rate": gst_rate,
+                    "gst_amount": gst_amount,
+                    "taxable_value": taxable_value,
+                })
+            
+            # Create new sale items
+            for item_data in sale_items_data:
+                sale_item = SaleItem(sale_id=sale.id, **item_data)
+                db.add(sale_item)
+            
+            # Update calculated fields
+            discount_amount = Decimal(str(update_data.get('discount_amount', sale.discount_amount)))
+            net_amount = total_amount + total_tax - discount_amount
+            
+            amount_cash = Decimal(str(update_data.get('amount_cash', sale.amount_cash)))
+            amount_upi = Decimal(str(update_data.get('amount_upi', sale.amount_upi)))
+            amount_card = Decimal(str(update_data.get('amount_card', sale.amount_card)))
+            amount_credit = Decimal(str(update_data.get('amount_credit', sale.amount_credit)))
+            total_paid = amount_cash + amount_upi + amount_card
+            balance_due = net_amount - total_paid
+            
+            # Update sale fields
+            sale.total_amount = float(total_amount)
+            sale.discount_amount = float(discount_amount)
+            sale.tax_amount = float(total_tax)
+            sale.net_amount = float(net_amount)
+            sale.amount_cash = float(amount_cash)
+            sale.amount_upi = float(amount_upi)
+            sale.amount_card = float(amount_card)
+            sale.amount_credit = float(amount_credit)
+            sale.total_paid = float(total_paid)
+            sale.balance_due = float(balance_due)
+        else:
+            # Only update header fields, recalculate payment totals
+            amount_cash = Decimal(str(update_data.get('amount_cash', sale.amount_cash)))
+            amount_upi = Decimal(str(update_data.get('amount_upi', sale.amount_upi)))
+            amount_card = Decimal(str(update_data.get('amount_card', sale.amount_card)))
+            amount_credit = Decimal(str(update_data.get('amount_credit', sale.amount_credit)))
+            total_paid = amount_cash + amount_upi + amount_card
+            balance_due = sale.net_amount - total_paid
+            
+            sale.amount_cash = float(amount_cash)
+            sale.amount_upi = float(amount_upi)
+            sale.amount_card = float(amount_card)
+            sale.amount_credit = float(amount_credit)
+            sale.total_paid = float(total_paid)
+            sale.balance_due = float(balance_due)
+        
+        # Update other fields
+        if 'invoice_number' in update_data:
+            sale.invoice_number = update_data['invoice_number']
+        if 'invoice_date' in update_data:
+            sale.invoice_date = update_data['invoice_date']
+        if 'invoice_time' in update_data:
+            sale.invoice_time = update_data['invoice_time']
+        if 'customer_id' in update_data:
+            sale.customer_id = update_data['customer_id']
+        if 'channel' in update_data:
+            sale.channel = update_data['channel']
+        if 'discount_amount' in update_data and 'items' not in update_data:
+            # Recalculate net_amount if discount changed but items didn't
+            sale.discount_amount = float(update_data['discount_amount'])
+            sale.net_amount = sale.total_amount + sale.tax_amount - sale.discount_amount
+            sale.balance_due = sale.net_amount - sale.total_paid
+        if 'remarks' in update_data:
+            sale.remarks = update_data['remarks']
+        
+        await db.commit()
+        await db.refresh(sale)
+        
+        # Load relationships for response
+        await db.refresh(sale, ["items", "customer"])
+        for item in sale.items:
+            await db.refresh(item, ["product_variant"])
+            if item.product_variant and item.product_variant.product:
+                item.product_variant.product_name = item.product_variant.product.name
+        
+        return sale
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error updating sale: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating sale: {str(e)}"
+        )
 
 
 @router.get("", response_model=List[SaleNewWithItems])

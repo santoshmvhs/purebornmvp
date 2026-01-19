@@ -172,6 +172,10 @@ app.include_router(dashboard.router)
 app.include_router(oil_cake_sales.router)
 app.include_router(product_categories.router)
 
+# GST Lookup router
+from app.routers import gst_lookup
+app.include_router(gst_lookup.router)
+
 
 @app.get("/")
 def read_root():

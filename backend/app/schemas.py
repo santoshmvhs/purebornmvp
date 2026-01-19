@@ -439,6 +439,7 @@ class ProductVariantRead(ProductVariantBase):
     is_active: bool
     created_at: datetime
     product_name: Optional[str] = None  # Product name from relationship
+    hsn_code: Optional[str] = None  # HSN code from product
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -641,6 +642,21 @@ class SaleNewCreate(BaseModel):
     amount_upi: float = Field(default=0, ge=0)
     amount_card: float = Field(default=0, ge=0)
     amount_credit: float = Field(default=0, ge=0)
+    remarks: Optional[str] = None
+
+
+class SaleNewUpdate(BaseModel):
+    invoice_number: Optional[str] = None
+    invoice_date: Optional[date] = None
+    invoice_time: Optional[time] = None
+    customer_id: Optional[UUID] = None
+    channel: Optional[str] = None
+    items: Optional[List[SaleItemNewCreate]] = None
+    discount_amount: Optional[float] = Field(None, ge=0)
+    amount_cash: Optional[float] = Field(None, ge=0)
+    amount_upi: Optional[float] = Field(None, ge=0)
+    amount_card: Optional[float] = Field(None, ge=0)
+    amount_credit: Optional[float] = Field(None, ge=0)
     remarks: Optional[str] = None
 
 

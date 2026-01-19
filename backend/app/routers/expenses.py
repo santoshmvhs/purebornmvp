@@ -202,10 +202,10 @@ async def list_expenses(
         
         where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
         
-        # Try to select with expense_subcategory_id first
+        # Try to select without expense_subcategory_id first (column may not exist)
         try:
             sql = text(f"""
-                SELECT id, date, name, description, expense_category_id, expense_subcategory_id, vendor_id,
+                SELECT id, date, name, description, expense_category_id, vendor_id,
                        amount_cash, amount_upi, amount_card, amount_credit,
                        total_amount, total_paid, balance_due, created_at
                 FROM expenses
@@ -225,16 +225,16 @@ async def list_expenses(
                         'name': str(row[2]) if row[2] else '',
                         'description': str(row[3]) if row[3] else None,
                         'expense_category_id': str(row[4]) if row[4] else None,
-                        'expense_subcategory_id': str(row[5]) if row[5] else None,
-                        'vendor_id': str(row[6]) if row[6] else None,
-                        'amount_cash': float(row[7]) if row[7] is not None else 0.0,
-                        'amount_upi': float(row[8]) if row[8] is not None else 0.0,
-                        'amount_card': float(row[9]) if row[9] is not None else 0.0,
-                        'amount_credit': float(row[10]) if row[10] is not None else 0.0,
-                        'total_amount': float(row[11]) if row[11] is not None else 0.0,
-                        'total_paid': float(row[12]) if row[12] is not None else 0.0,
-                        'balance_due': float(row[13]) if row[13] is not None else 0.0,
-                        'created_at': row[14].isoformat() if row[14] else None,
+                        'expense_subcategory_id': None,  # Column doesn't exist in DB
+                        'vendor_id': str(row[5]) if row[5] else None,
+                        'amount_cash': float(row[6]) if row[6] is not None else 0.0,
+                        'amount_upi': float(row[7]) if row[7] is not None else 0.0,
+                        'amount_card': float(row[8]) if row[8] is not None else 0.0,
+                        'amount_credit': float(row[9]) if row[9] is not None else 0.0,
+                        'total_amount': float(row[10]) if row[10] is not None else 0.0,
+                        'total_paid': float(row[11]) if row[11] is not None else 0.0,
+                        'balance_due': float(row[12]) if row[12] is not None else 0.0,
+                        'created_at': row[13].isoformat() if row[13] else None,
                     }
                     expense_list.append(expense_dict)
                 except Exception as e:

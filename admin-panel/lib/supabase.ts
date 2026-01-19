@@ -45,6 +45,70 @@ export const getSupabaseClient = (): SupabaseClient | null => {
     }
   }
 
+  // Create a custom fetch function with better error handling
+  // This matches the Fetch API signature: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  const customFetch = typeof window !== 'undefined' 
+    ? async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        try {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+          
+          const response = await fetch(input, {
+            ...init,
+            // Only include credentials if explicitly set, otherwise use 'same-origin'
+            credentials: init?.credentials || 'same-origin',
+            // Add headers that might help with CORS
+            headers: {
+              ...init?.headers,
+              // Only set Content-Type if not already set and if there's a body
+              ...(init?.body && !init?.headers?.['Content-Type'] 
+                ? { 'Content-Type': 'application/json' } 
+                : {}),
+            },
+          });
+          
+          // Log fetch errors for debugging
+          if (!response.ok) {
+            console.error('[Supabase] Fetch error:', {
+              url,
+              status: response.status,
+              statusText: response.statusText,
+              origin: window.location.origin,
+            });
+          }
+          
+          return response;
+        } catch (error: any) {
+          // Enhanced error logging
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : 'unknown';
+          
+          console.error('[Supabase] Network error:', {
+            url,
+            error: error.message,
+            origin: window.location.origin,
+            supabaseUrl,
+            isCorsError: error.message?.includes('CORS') || error.message?.includes('Failed to fetch'),
+          });
+          
+          // Provide helpful error message for network/CORS issues
+          if (error.message?.includes('Failed to fetch') || error.message?.includes('CORS')) {
+            console.error(
+              '[Supabase] Network/CORS Error Detected!\n' +
+              `Current origin: ${window.location.origin}\n` +
+              `Supabase URL: ${supabaseUrl}\n\n` +
+              'Possible solutions:\n' +
+              '1. Check if your Supabase project is active (not paused)\n' +
+              '2. Verify the Supabase URL is correct\n' +
+              '3. Check browser console for CORS errors\n' +
+              '4. If using a custom domain, ensure it\'s properly configured\n' +
+              '5. Try accessing Supabase directly: ' + supabaseUrl + '\n' +
+              '6. Check network tab for detailed error information'
+            );
+          }
+          throw error;
+        }
+      }
+    : undefined;
+
   // Create Supabase client with actual credentials
   supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
@@ -52,12 +116,25 @@ export const getSupabaseClient = (): SupabaseClient | null => {
       autoRefreshToken: true,
       detectSessionInUrl: true,
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      // Add flow type to help with token refresh
+      flowType: 'pkce',
+    },
+    global: {
+      // Use custom fetch if available
+      fetch: customFetch,
+      // Add headers that might help
+      headers: {
+        'X-Client-Info': 'pureborn-admin-panel',
+      },
     },
   });
   
   // Log successful client creation
   if (typeof window !== 'undefined') {
-    console.log('[Supabase] Client created successfully', { url: supabaseUrl });
+    console.log('[Supabase] Client created successfully', { 
+      url: supabaseUrl,
+      origin: window.location.origin,
+    });
   }
 
   lastUrl = supabaseUrl;

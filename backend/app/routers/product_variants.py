@@ -45,7 +45,7 @@ async def list_product_variants(
     result = await db.execute(query)
     variants = result.scalars().unique().all()
     
-    # Convert to dict and add product_name, then create Pydantic models
+    # Convert to dict and add product_name and hsn_code, then create Pydantic models
     from app.schemas import ProductVariantRead
     variant_dicts = []
     for variant in variants:
@@ -63,6 +63,7 @@ async def list_product_variants(
             'is_active': variant.is_active,
             'created_at': variant.created_at,
             'product_name': variant.product.name if variant.product else None,
+            'hsn_code': variant.product.hsn_code if variant.product else None,
         }
         variant_dicts.append(ProductVariantRead(**variant_dict))
     

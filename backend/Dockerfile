@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
-# Render uses PORT environment variable
+# Coolify uses PORT environment variable (defaults to 8000)
 ENV PORT=8000
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -20,9 +21,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose port
+# Make startup script executable
+RUN chmod +x /app/docker-entrypoint.sh
+
+# Expose port (Coolify will map this dynamically)
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use startup script for migrations and server start
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 

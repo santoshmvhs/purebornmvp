@@ -197,9 +197,11 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
             'comments': ['comments', 'remarks', 'description'],
             # Line item format fields
             'product_name': ['product_name', 'item_name', 'product', 'item', 'description'],
-            'sku': ['sku', 'product_code', 'barcode', 'code', 'item_code'],
+            'sku': ['sku', 'sku_code'],
+            'product_code': ['product_code', 'productcode', 'product_code_alias'],
+            'barcode': ['barcode', 'code', 'item_code'],
             'quantity': ['quantity', 'qty', 'qty.', 'count'],
-            'price': ['price', 'unit_price', 'rate', 'unit_rate', 'unitprice'],
+            'price': ['price', 'unit_price', 'rate', 'unit_rate', 'unitprice', 'selling_price_per_unit'],
             'total': ['total', 'amount', 'line_total', 'item_total'],
             'payment_method': ['payment_method', 'payment_type', 'payment', 'pay_mode', 'transaction_type'],
         }
@@ -266,11 +268,25 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
         )
         all_variants = result.scalars().all()
         
-        # Create lookup dictionaries
-        variant_by_sku = {v.sku.lower(): v for v in all_variants if v.sku}
-        variant_by_barcode = {v.barcode.lower(): v for v in all_variants if v.barcode}
+        # Create lookup dictionaries - Product Code is stored as barcode
+        variant_by_sku = {str(v.sku).lower(): v for v in all_variants if v.sku}
+        variant_by_barcode = {}  # Product Code is stored as barcode
+        variant_by_product_code = {}  # Alias for barcode
         variant_by_name = {}
+        
         for v in all_variants:
+            # Product Code is stored as barcode - this is the PRIMARY matching method
+            if v.barcode:
+                barcode_str = str(v.barcode).strip()
+                variant_by_barcode[barcode_str.lower()] = v
+                variant_by_product_code[barcode_str.lower()] = v
+                # Also try numeric version (remove leading zeros)
+                try:
+                    barcode_num = int(barcode_str)
+                    variant_by_product_code[str(barcode_num).lower()] = v
+                except:
+                    pass
+            
             # Try both variant name and product name
             if v.product:
                 key = f"{v.product.name} {v.variant_name}".lower().strip()
@@ -280,12 +296,14 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
         
         print(f"Loaded {len(all_variants)} product variants for matching")
         
-        # Get a default product variant for summary format sales
+        # Get a default product variant (for cases where product not found)
         default_variant = None
-        if summary_format and all_variants:
+        if all_variants:
             # Use the first active variant as default
             default_variant = all_variants[0]
-            print(f"Using default product variant: {default_variant.variant_name} (ID: {default_variant.id})")
+            print(f"Default variant for unmatched products: {default_variant.variant_name} (Product Code: {default_variant.barcode})")
+        else:
+            print("WARNING: No product variants found in database! Sales will be skipped if products don't match.")
         
         # Group rows by invoice number (for line item format) or process individually (for summary format)
         print("Grouping invoices...")
@@ -464,27 +482,73 @@ async def import_sales_from_excel(file_path: str, db: AsyncSession):
                         product_name = str(row[actual_columns['product_name']]).strip()
                         variant = None
                         
-                        # Try SKU first
-                        if 'sku' in actual_columns:
-                            sku = str(row[actual_columns['sku']]).strip().lower()
-                            if sku and sku != 'nan':
-                                variant = variant_by_sku.get(sku)
+                        # PRIMARY: Try Product Code first (stored as barcode in ProductVariant)
+                        if 'product_code' in actual_columns:
+                            product_code = row[actual_columns['product_code']]
+                            if product_code is not None and not pd.isna(product_code):
+                                # Handle both numeric (numpy.int64) and string product codes
+                                if isinstance(product_code, (int, float)):
+                                    product_code_str = str(int(product_code))
+                                else:
+                                    product_code_str = str(product_code).strip()
+                                
+                                if product_code_str and product_code_str.lower() != 'nan':
+                                    # Try exact match (string)
+                                    variant = variant_by_product_code.get(product_code_str.lower())
+                                    if not variant:
+                                        # Try numeric match
+                                        try:
+                                            code_num = int(product_code_str)
+                                            variant = variant_by_product_code.get(str(code_num))
+                                            if not variant:
+                                                variant = variant_by_product_code.get(str(code_num).lower())
+                                        except:
+                                            pass
                         
-                        # Try barcode
+                        # FALLBACK: Try barcode (same as Product Code)
+                        if not variant and 'product_code' in actual_columns:
+                            barcode = row[actual_columns['product_code']]
+                            if barcode is not None and not pd.isna(barcode):
+                                if isinstance(barcode, (int, float)):
+                                    barcode_str = str(int(barcode))
+                                else:
+                                    barcode_str = str(barcode).strip()
+                                if barcode_str and barcode_str.lower() != 'nan':
+                                    variant = variant_by_barcode.get(barcode_str.lower())
+                        
+                        # FALLBACK: Try SKU
                         if not variant and 'sku' in actual_columns:
-                            barcode = str(row[actual_columns['sku']]).strip().lower()
-                            if barcode and barcode != 'nan':
-                                variant = variant_by_barcode.get(barcode)
+                            sku = row[actual_columns['sku']]
+                            if sku is not None and not pd.isna(sku):
+                                sku_str = str(sku).strip().lower()
+                                if sku_str and sku_str != 'nan':
+                                    variant = variant_by_sku.get(sku_str)
                         
-                        # Try name matching
-                        if not variant:
+                        # FALLBACK: Try name matching (fuzzy)
+                        if not variant and product_name:
                             name_key = product_name.lower().strip()
+                            # Try exact match
                             variant = variant_by_name.get(name_key)
+                            # Try partial match
+                            if not variant:
+                                for name, v in variant_by_name.items():
+                                    if name_key in name or name in name_key:
+                                        variant = v
+                                        break
                         
+                        # FALLBACK: Try variant name
+                        if not variant and 'variant_name' in actual_columns:
+                            variant_name = row[actual_columns['variant_name']]
+                            if variant_name is not None and not pd.isna(variant_name):
+                                variant_name_str = str(variant_name).lower().strip()
+                                if variant_name_str and variant_name_str != 'nan':
+                                    variant = variant_by_name.get(variant_name_str)
+                        
+                        # FINAL FALLBACK: Use default variant if product not found
                         if not variant:
-                            # Always use default variant if product not found (so we don't skip the sale)
                             if default_variant:
                                 variant = default_variant
+                                # Don't log every missing product to avoid spam
                             else:
                                 # Skip this item but continue with the invoice
                                 skipped.append({
