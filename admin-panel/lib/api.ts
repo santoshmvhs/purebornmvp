@@ -12,8 +12,9 @@ const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     // If not localhost, we're in production - use production backend
+    // Use HTTPS to avoid mixed content errors when admin panel is served over HTTPS
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return 'http://dk8o4k0cwkw404wws4woogok.192.168.68.113.sslip.io';
+      return 'https://dk8o4k0cwkw404wws4woogok.192.168.68.113.sslip.io';
     }
   }
   
