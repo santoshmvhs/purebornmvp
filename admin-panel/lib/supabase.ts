@@ -52,18 +52,49 @@ export const getSupabaseClient = (): SupabaseClient | null => {
         try {
           const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
           
+          // Helper to check if Content-Type header exists
+          const hasContentType = (headers?: HeadersInit): boolean => {
+            if (!headers) return false;
+            if (headers instanceof Headers) {
+              return headers.has('Content-Type');
+            }
+            if (Array.isArray(headers)) {
+              return headers.some(([key]) => key.toLowerCase() === 'content-type');
+            }
+            // It's a Record<string, string>
+            return 'Content-Type' in headers || 'content-type' in headers;
+          };
+
+          // Convert headers to a plain object for easier manipulation
+          const normalizeHeaders = (headers?: HeadersInit): Record<string, string> => {
+            if (!headers) return {};
+            if (headers instanceof Headers) {
+              const obj: Record<string, string> = {};
+              headers.forEach((value, key) => {
+                obj[key] = value;
+              });
+              return obj;
+            }
+            if (Array.isArray(headers)) {
+              return Object.fromEntries(headers);
+            }
+            // It's already a Record<string, string>
+            return headers as Record<string, string>;
+          };
+
+          const normalizedHeaders = normalizeHeaders(init?.headers);
+          
+          // Add Content-Type if not present and body exists
+          if (init?.body && !hasContentType(init?.headers)) {
+            normalizedHeaders['Content-Type'] = 'application/json';
+          }
+
           const response = await fetch(input, {
             ...init,
             // Only include credentials if explicitly set, otherwise use 'same-origin'
             credentials: init?.credentials || 'same-origin',
             // Add headers that might help with CORS
-            headers: {
-              ...init?.headers,
-              // Only set Content-Type if not already set and if there's a body
-              ...(init?.body && !init?.headers?.['Content-Type'] 
-                ? { 'Content-Type': 'application/json' } 
-                : {}),
-            },
+            headers: normalizedHeaders,
           });
           
           // Log fetch errors for debugging
