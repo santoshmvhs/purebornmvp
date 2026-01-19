@@ -13,7 +13,7 @@ const getApiBaseUrl = (): string => {
     const hostname = window.location.hostname;
     // If not localhost, we're in production - use production backend
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return 'https://purebornmvp.onrender.com';
+      return 'http://dk8o4k0cwkw404wws4woogok.192.168.68.113.sslip.io';
     }
   }
   
