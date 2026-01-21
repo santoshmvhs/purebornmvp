@@ -36,10 +36,11 @@ alembic upgrade head || {
 }
 
 # Initialize database if needed (only if init_db.py exists and DATABASE_URL is set)
+# Note: Tables are created via Alembic migrations, this only seeds initial data
 if [ -f "init_db.py" ] && [ -n "$DATABASE_URL" ]; then
-    echo "🔧 Initializing database (if needed)..."
+    echo "🔧 Seeding database (if needed)..."
     python init_db.py || {
-        echo "⚠️  Database initialization failed or already initialized, continuing..."
+        echo "⚠️  Database seeding failed or already seeded, continuing..."
     }
 fi
 
