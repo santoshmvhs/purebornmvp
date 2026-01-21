@@ -3,22 +3,24 @@ import axios from 'axios';
 // Determine API URL based on environment
 // This function is called at runtime to ensure window is available
 const getApiBaseUrl = (): string => {
-  // If explicitly set via environment variable, use that
+  // Priority 1: Use environment variable if set (recommended for production)
+  // Set NEXT_PUBLIC_API_URL in Cloudflare Pages environment variables
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
   
-  // If we're in the browser (client-side), check the hostname
+  // Priority 2: Auto-detect based on hostname
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-    // If not localhost, we're in production - use production backend
-    // Use HTTPS to avoid mixed content errors when admin panel is served over HTTPS
+    // If not localhost, we're in production
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return 'https://dk8o4k0cwkw404wws4woogok.192.168.68.113.sslip.io';
+      // Use the production API URL via Cloudflare Tunnel
+      // Make sure Cloudflare Tunnel is configured to point to http://192.168.68.113:8000
+      return 'https://api.pureborn.in';
     }
   }
   
-  // Default to localhost for local development
+  // Priority 3: Default to localhost for local development
   return 'http://localhost:9000';
 };
 
