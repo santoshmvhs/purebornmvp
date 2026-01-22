@@ -105,19 +105,20 @@ export default function LoginPage() {
         throw new Error('No session returned from Supabase');
       }
 
-      // Check if token is expired and refresh if needed
+      // For fresh sign-in, use the session directly (it should be valid)
+      // Only refresh if we detect the token is already expired (shouldn't happen for fresh sign-in)
       let activeSession = data.session;
       const now = Math.floor(Date.now() / 1000);
       const tokenExp = activeSession.expires_at || 0;
       
-      // If token is expired or will expire soon (within 60 seconds), refresh it
-      if (tokenExp <= now + 60) {
-        console.log('Token expired or expiring soon, refreshing...');
+      // Only refresh if token is actually expired (not just expiring soon)
+      // For fresh sign-ins, this should never happen
+      if (tokenExp > 0 && tokenExp <= now) {
+        console.warn('Token is expired on fresh sign-in, attempting refresh...');
         const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession(data.session);
         if (refreshError) {
-          console.error('Failed to refresh session:', refreshError);
-          // If refresh fails, the session might be too old - try signing in again
-          throw new Error('Session expired. Please sign in again.');
+          console.error('Failed to refresh expired session:', refreshError);
+          throw new Error('Session expired immediately after sign-in. Please try again.');
         }
         if (refreshData?.session) {
           activeSession = refreshData.session;
