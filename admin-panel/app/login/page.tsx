@@ -133,6 +133,15 @@ export default function LoginPage() {
       const apiUrl = getApiBaseUrl();
       let response: Response;
       
+      // Log token info for debugging (first 20 chars only for security)
+      const tokenPreview = activeSession.access_token.substring(0, 20) + '...';
+      console.log('Using token:', {
+        length: activeSession.access_token.length,
+        preview: tokenPreview,
+        expiresAt: activeSession.expires_at,
+        expiresIn: activeSession.expires_at ? activeSession.expires_at - Math.floor(Date.now() / 1000) : 'unknown',
+      });
+      
       try {
         response = await fetch(`${apiUrl}/users/me`, {
           headers: {
@@ -156,19 +165,33 @@ export default function LoginPage() {
         try {
           const errorData = await response.json();
           errorMessage = errorData.detail || errorData.message || errorMessage;
+          console.error('Backend error response:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+          });
         } catch {
           // If JSON parsing fails, try text
           try {
             errorMessage = await response.text();
+            console.error('Backend error (text):', {
+              status: response.status,
+              statusText: response.statusText,
+              body: errorMessage,
+            });
           } catch {
             // If that also fails, use status-based message
             if (response.status === 401 || response.status === 403) {
-              errorMessage = 'User not found in database. Please contact administrator.';
+              errorMessage = 'Authentication failed. The token may be expired or invalid. Please try signing in again.';
             } else if (response.status === 500) {
-              errorMessage = 'Server error. Please check backend configuration (SUPABASE_JWT_SECRET may be missing).';
+              errorMessage = 'Server error. Please check backend configuration (SUPABASE_JWT_SECRET may be missing or incorrect).';
             } else {
               errorMessage = `Backend returned error: ${response.status} ${response.statusText}`;
             }
+            console.error('Backend error (no body):', {
+              status: response.status,
+              statusText: response.statusText,
+            });
           }
         }
         throw new Error(errorMessage);
