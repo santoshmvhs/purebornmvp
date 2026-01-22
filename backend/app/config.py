@@ -28,12 +28,6 @@ class Settings(BaseSettings):
         description="Environment: development, staging, or production"
     )
     
-    # Monitoring
-    SENTRY_DSN: str = Field(
-        default="",
-        description="Sentry DSN for error tracking (optional)"
-    )
-    
     # Redis (optional, for rate limiting)
     REDIS_URL: str = Field(
         default="",
@@ -89,17 +83,6 @@ class Settings(BaseSettings):
                     )
         return v
     
-    @field_validator('SENTRY_DSN')
-    @classmethod
-    def validate_sentry_dsn(cls, v, info):
-        if info.data.get('ENVIRONMENT') == 'production' and v:
-            # Basic validation - Sentry DSN should start with https://
-            if not v.startswith('https://'):
-                raise ValueError(
-                    "SENTRY_DSN must be a valid Sentry DSN URL starting with https://"
-                )
-        return v
-
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -144,12 +127,6 @@ def validate_settings():
                 "CORS_ORIGINS cannot be '*' in production! "
                 "Specify exact origins for security."
             )
-    
-    # Sentry validation
-    if settings.ENVIRONMENT == "production" and not settings.SENTRY_DSN:
-        warnings.append(
-            "SENTRY_DSN is not set. Error tracking will not work in production."
-        )
     
     # Raise errors if any
     if errors:

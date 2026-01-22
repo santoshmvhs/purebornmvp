@@ -13,7 +13,6 @@ pydantic>=2.5.3
 alembic>=1.13.1
 python-dotenv>=1.0.0
 slowapi>=0.1.9
-sentry-sdk[fastapi]>=2.0.0
 
 # Excel parsing for imports
 openpyxl>=3.1.2

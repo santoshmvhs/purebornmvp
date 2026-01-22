@@ -7,9 +7,6 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from app.routers import (
     auth, products, sales, reports, users,
@@ -31,18 +28,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger(__name__)
-
-# Initialize Sentry for error tracking (only in production)
-if settings.ENVIRONMENT == "production":
-    sentry_sdk.init(
-        dsn=settings.SENTRY_DSN if hasattr(settings, "SENTRY_DSN") and settings.SENTRY_DSN else None,
-        integrations=[
-            FastApiIntegration(transaction_style="endpoint"),
-            SqlalchemyIntegration(),
-        ],
-        traces_sample_rate=0.1,  # 10% of transactions
-        environment=settings.ENVIRONMENT,
-    )
 
 # Initialize rate limiter
 # Use Redis in production if REDIS_URL is set, otherwise use memory

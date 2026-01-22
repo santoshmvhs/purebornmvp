@@ -22,8 +22,6 @@ services:
         # Must include both:
         #   - https://purebornmvp.pages.dev (Cloudflare Pages default subdomain)
         #   - https://admin.pureborn.in (custom domain)
-      - key: SENTRY_DSN
-        sync: false  # Optional - set manually if using Sentry
       - key: REDIS_URL
         sync: false  # Optional - set manually if using Redis for rate limiting
     healthCheckPath: /health
