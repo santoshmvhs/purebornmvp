@@ -193,7 +193,15 @@ async def get_current_user(
                     detail="Failed to create user account. Please contact administrator."
                 )
     else:
-        logger.warning("Supabase token verification failed or SUPABASE_JWT_SECRET not set, trying regular JWT")
+        # If SUPABASE_JWT_SECRET is not set, provide a helpful error message
+        if not settings.SUPABASE_JWT_SECRET:
+            logger.error("SUPABASE_JWT_SECRET is not configured. Cannot verify Supabase tokens.")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server configuration error: SUPABASE_JWT_SECRET is not set. Please contact administrator."
+            )
+        
+        logger.warning("Supabase token verification failed, trying regular JWT")
     
     # Fall back to our own JWT verification
     try:
@@ -202,7 +210,14 @@ async def get_current_user(
         if username is None:
             raise credentials_exception
     except JWTError:
-        raise credentials_exception
+        # If we get here, it means the token is neither a valid Supabase token nor a valid backend JWT
+        # This likely means SUPABASE_JWT_SECRET is incorrect or the token format is wrong
+        logger.error(f"Token verification failed for both Supabase and backend JWT. Token format: {len(token.split('.')) if '.' in token else 'invalid'} parts")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token. Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     user = await get_user_by_username(db, username=username)
     if user is None:
