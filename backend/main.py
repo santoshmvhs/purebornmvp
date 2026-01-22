@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
@@ -107,6 +108,13 @@ app = FastAPI(
 # Add rate limiter to app state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Proxy Headers Middleware - MUST be first to trust Cloudflare/Traefik headers
+# This allows FastAPI to correctly detect HTTPS from proxy headers
+app.add_middleware(
+    ProxyHeadersMiddleware,
+    trusted_hosts="*"
+)
 
 # CORS middleware - MUST be added before other middleware to handle OPTIONS requests
 app.add_middleware(

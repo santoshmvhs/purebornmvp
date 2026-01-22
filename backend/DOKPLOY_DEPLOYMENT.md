@@ -50,6 +50,9 @@ ENVIRONMENT=production
 
 # CORS (comma-separated list of allowed origins)
 CORS_ORIGINS=https://admin.pureborn.in,https://yourdomain.com
+
+# Proxy Headers (for Cloudflare/Traefik)
+FORWARDED_ALLOW_IPS=*
 ```
 
 #### Optional Variables
@@ -57,6 +60,9 @@ CORS_ORIGINS=https://admin.pureborn.in,https://yourdomain.com
 ```bash
 # Port (if you want to use 3000 or 8080 instead of 8000)
 PORT=8000
+
+# Uvicorn Proxy Headers (if using Uvicorn explicitly)
+UVICORN_PROXY_HEADERS=true
 
 # Supabase (if using Supabase Auth)
 SUPABASE_URL=https://your-project.supabase.co
@@ -84,8 +90,14 @@ Copy the output and use it as your `JWT_SECRET_KEY`.
 If you want to use a custom domain:
 
 1. Go to **Domains** section
-2. Add your domain: `api.yourdomain.com`
-3. Dokploy will automatically provision SSL/TLS via Let's Encrypt
+2. Add your domain: `backend.pureborn.in` (or `api.yourdomain.com`)
+3. Configure domain settings:
+   - **Port**: `8000`
+   - **Path**: `/`
+   - **HTTPS**: ✅ Enabled
+   - **Redirect HTTP → HTTPS**: ❌ **OFF** (Cloudflare/Traefik already handles HTTPS)
+
+**⚠️ IMPORTANT**: Do NOT enable HTTP → HTTPS redirect in Dokploy if you're using Cloudflare. Cloudflare already handles HTTPS termination.
 
 ### 6. Deploy
 
@@ -180,6 +192,34 @@ postgresql+asyncpg://username:password@host:port/database_name
 - [ ] Configure `SENTRY_DSN` for error tracking
 - [ ] Use `REDIS_URL` for rate limiting in production
 
+## Cloudflare Configuration (If Using Cloudflare Tunnel)
+
+If you're routing traffic through Cloudflare Tunnel to Dokploy:
+
+### Cloudflare SSL/TLS Settings
+
+1. Go to **Cloudflare Dashboard** → **SSL/TLS**
+2. Set **SSL Mode** to: **Full** (NOT Flexible, NOT Full Strict)
+
+**Why?**
+- Cloudflare Tunnel → Traefik is HTTP internally
+- Cloudflare must allow HTTPS → HTTP internally
+- Full mode allows this while still encrypting client → Cloudflare
+
+### Cloudflare Tunnel Configuration
+
+Ensure your Cloudflare Tunnel route for `backend.pureborn.in` points to:
+- **Service**: `http://192.168.68.113:8000` (or your Dokploy server's local IP and port)
+
+### FastAPI Proxy Headers
+
+The FastAPI app is configured to trust proxy headers from Cloudflare/Traefik:
+- `ProxyHeadersMiddleware` is enabled
+- `trusted_hosts="*"` allows all proxy hosts
+- This ensures FastAPI correctly detects HTTPS from proxy headers
+
+**⚠️ CRITICAL**: Do NOT add `HTTPSRedirectMiddleware` or any HTTPS redirect logic. Cloudflare already handles HTTPS termination.
+
 ## Troubleshooting
 
 ### Database Connection Issues
@@ -218,6 +258,13 @@ postgresql+asyncpg://username:password@host:port/database_name
 3. Check database connectivity
 4. Ensure port is correctly configured
 
+### HTTPS/Proxy Issues
+
+1. **Mixed Content Errors**: Ensure `FORWARDED_ALLOW_IPS=*` is set
+2. **Incorrect Protocol Detection**: Verify `ProxyHeadersMiddleware` is enabled (it is by default)
+3. **Cloudflare SSL Errors**: Set Cloudflare SSL mode to **Full** (not Flexible or Full Strict)
+4. **Double Redirect**: Disable HTTP → HTTPS redirect in Dokploy if using Cloudflare
+
 ## Support
 
 For issues specific to:
@@ -235,6 +282,7 @@ DATABASE_URL=postgresql+psycopg://postgres.[ref]:[pass]@aws-1-[region].pooler.su
 JWT_SECRET_KEY=i-CQC0_SYGirvVQnyEKfLgUiTdf53DSVf1CShl1UssE
 ENVIRONMENT=production
 CORS_ORIGINS=https://admin.pureborn.in
+FORWARDED_ALLOW_IPS=*
 
 # Port (optional, defaults to 8000)
 PORT=8000
