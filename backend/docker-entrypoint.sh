@@ -44,7 +44,8 @@ if [ -f "init_db.py" ] && [ -n "$DATABASE_URL" ]; then
     }
 fi
 
-# Get port from environment variable (Coolify sets this)
+# Get port from environment variable (Dokploy/Coolify sets this)
+# Supports ports: 8000 (default), 3000, 8080
 PORT=${PORT:-8000}
 
 echo "🌐 Starting server on port $PORT..."

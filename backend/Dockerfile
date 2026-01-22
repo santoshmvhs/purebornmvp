@@ -1,6 +1,7 @@
 FROM python:3.11-slim
 
-# Coolify uses PORT environment variable (defaults to 8000)
+# PORT environment variable (defaults to 8000)
+# Dokploy/Coolify will set this dynamically
 ENV PORT=8000
 ENV PYTHONUNBUFFERED=1
 
@@ -24,7 +25,7 @@ COPY . .
 # Make startup script executable
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Expose port (Coolify will map this dynamically)
+# Expose port (will be mapped by Dokploy/Coolify)
 EXPOSE 8000
 
 # Use startup script for migrations and server start
