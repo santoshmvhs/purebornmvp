@@ -261,7 +261,7 @@ The FastAPI app is configured to trust proxy headers from Cloudflare/Traefik:
 ### HTTPS/Proxy Issues
 
 1. **Mixed Content Errors**: Ensure `FORWARDED_ALLOW_IPS=*` is set
-2. **Incorrect Protocol Detection**: Verify `ProxyHeadersMiddleware` is enabled (it is by default)
+2. **Incorrect Protocol Detection**: Verify Uvicorn is started with `--proxy-headers` flag (it is by default in docker-entrypoint.sh)
 3. **Cloudflare SSL Errors**: Set Cloudflare SSL mode to **Full** (not Flexible or Full Strict)
 4. **Double Redirect**: Disable HTTP → HTTPS redirect in Dokploy if using Cloudflare
 
