@@ -87,11 +87,13 @@ def verify_supabase_token(token: str) -> Optional[dict]:
     
     try:
         # Try decoding with audience="authenticated" first (standard Supabase JWT)
+        # Add leeway of 60 seconds to handle clock skew between servers
         payload = jwt.decode(
             token,
             settings.SUPABASE_JWT_SECRET,
             algorithms=["HS256"],
-            audience="authenticated"
+            audience="authenticated",
+            options={"leeway": 60}  # Allow 60 seconds clock skew
         )
         logger.info("Supabase token decoded successfully with audience='authenticated'")
         return payload
@@ -102,7 +104,7 @@ def verify_supabase_token(token: str) -> Optional[dict]:
                 token,
                 settings.SUPABASE_JWT_SECRET,
                 algorithms=["HS256"],
-                options={"verify_aud": False}
+                options={"verify_aud": False, "leeway": 60}  # Allow 60 seconds clock skew
             )
             logger.info("Supabase token decoded successfully without audience check")
             return payload
