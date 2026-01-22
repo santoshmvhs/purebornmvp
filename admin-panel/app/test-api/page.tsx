@@ -14,7 +14,7 @@ export default function TestApiPage() {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
       if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        return 'https://purebornmvp.onrender.com';
+        return 'https://backend.pureborn.in';
       }
     }
     return 'http://localhost:9000';

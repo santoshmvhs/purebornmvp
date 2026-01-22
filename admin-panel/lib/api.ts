@@ -16,7 +16,7 @@ const getApiBaseUrl = (): string => {
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
       // Use the production API URL via Cloudflare Tunnel
       // Make sure Cloudflare Tunnel is configured to point to http://192.168.68.113:8000
-      return 'https://api.pureborn.in';
+      return 'https://backend.pureborn.in';
     }
   }
   
