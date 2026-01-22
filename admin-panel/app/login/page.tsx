@@ -52,9 +52,13 @@ export default function LoginPage() {
           // Get user data from backend
           try {
             const apiUrl = getApiBaseUrl();
+            // Refresh session to get a valid token
+            const { data: refreshData } = await supabase.auth.refreshSession(session);
+            const activeSession = refreshData?.session || session;
+            
             const response = await fetch(`${apiUrl}/users/me`, {
               headers: {
-                'Authorization': `Bearer ${session.access_token}`,
+                'Authorization': `Bearer ${activeSession?.access_token || session.access_token}`,
               },
               credentials: 'include',
             });
@@ -99,6 +103,19 @@ export default function LoginPage() {
 
       if (!data.session || !data.user || !data.session.access_token) {
         throw new Error('No session returned from Supabase');
+      }
+
+      // Refresh the session to ensure we have a valid, non-expired token
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession(data.session);
+      if (refreshError) {
+        console.warn('Failed to refresh session, using original token:', refreshError);
+        // Continue with original token if refresh fails
+      }
+      
+      // Use refreshed session if available, otherwise use original
+      const activeSession = refreshData?.session || data.session;
+      if (!activeSession?.access_token) {
+        throw new Error('No valid access token available');
       }
 
       // Get user data from backend
@@ -147,7 +164,7 @@ export default function LoginPage() {
       }
 
       const userData = await response.json();
-      setAuth(data.session.access_token, userData, data.user);
+      setAuth(activeSession.access_token, userData, data.user);
       router.push('/');
     } catch (err: any) {
       console.error('Login error:', err);
