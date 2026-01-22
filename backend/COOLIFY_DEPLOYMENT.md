@@ -45,6 +45,9 @@ CORS_ORIGINS=https://yourdomain.com,https://admin.yourdomain.com
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_JWT_SECRET=your-supabase-jwt-secret
 
+# Monitoring
+SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
+
 # Redis (for rate limiting in production)
 REDIS_URL=redis://user:password@host:port/db
 
@@ -134,6 +137,7 @@ Coolify will automatically use the `/health` endpoint for health checks. The end
 - [ ] Configure `CORS_ORIGINS` with exact domains (not `*`)
 - [ ] Use HTTPS in production
 - [ ] Set `ENVIRONMENT=production`
+- [ ] Configure `SENTRY_DSN` for error tracking
 - [ ] Use `REDIS_URL` for rate limiting in production
 
 ## Troubleshooting
