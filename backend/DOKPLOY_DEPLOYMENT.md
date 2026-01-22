@@ -68,9 +68,6 @@ UVICORN_PROXY_HEADERS=true
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_JWT_SECRET=your-supabase-jwt-secret
 
-# Monitoring
-SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
-
 # Redis (for rate limiting in production)
 REDIS_URL=redis://user:password@host:port/db
 ```
@@ -189,7 +186,6 @@ postgresql+asyncpg://username:password@host:port/database_name
 - [ ] Configure `CORS_ORIGINS` with exact domains (not `*`)
 - [ ] Use HTTPS in production
 - [ ] Set `ENVIRONMENT=production`
-- [ ] Configure `SENTRY_DSN` for error tracking
 - [ ] Use `REDIS_URL` for rate limiting in production
 
 ## Cloudflare Configuration (If Using Cloudflare Tunnel)
@@ -290,6 +286,5 @@ PORT=8000
 # Optional
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_JWT_SECRET=your-supabase-jwt-secret
-SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
 REDIS_URL=redis://user:password@host:port/db
 ```
