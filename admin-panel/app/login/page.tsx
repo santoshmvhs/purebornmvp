@@ -125,7 +125,7 @@ export default function LoginPage() {
       try {
         response = await fetch(`${apiUrl}/users/me`, {
           headers: {
-            'Authorization': `Bearer ${data.session.access_token}`,
+            'Authorization': `Bearer ${activeSession.access_token}`,
             'Content-Type': 'application/json',
           },
           credentials: 'include',
