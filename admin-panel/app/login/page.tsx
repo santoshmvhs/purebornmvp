@@ -103,20 +103,47 @@ export default function LoginPage() {
 
       // Get user data from backend
       const apiUrl = getApiBaseUrl();
-      const response = await fetch(`${apiUrl}/users/me`, {
-        headers: {
-          'Authorization': `Bearer ${data.session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
+      let response: Response;
+      
+      try {
+        response = await fetch(`${apiUrl}/users/me`, {
+          headers: {
+            'Authorization': `Bearer ${data.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+        });
+      } catch (fetchError: any) {
+        // Network error - backend might be unreachable or CORS issue
+        console.error('Network error:', fetchError);
+        throw new Error(
+          `Cannot connect to backend at ${apiUrl}. ` +
+          `Please check: 1) Backend is running, 2) CORS is configured correctly, 3) Network connectivity.`
+        );
+      }
 
       if (!response.ok) {
-        if (response.status === 401 || response.status === 404) {
-          throw new Error('User not found in database. Please contact administrator.');
+        // Try to get error message from response
+        let errorMessage = 'Failed to get user data';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        } catch {
+          // If JSON parsing fails, try text
+          try {
+            errorMessage = await response.text();
+          } catch {
+            // If that also fails, use status-based message
+            if (response.status === 401 || response.status === 403) {
+              errorMessage = 'User not found in database. Please contact administrator.';
+            } else if (response.status === 500) {
+              errorMessage = 'Server error. Please check backend configuration (SUPABASE_JWT_SECRET may be missing).';
+            } else {
+              errorMessage = `Backend returned error: ${response.status} ${response.statusText}`;
+            }
+          }
         }
-        const errorText = await response.text();
-        throw new Error(errorText || 'Failed to get user data');
+        throw new Error(errorMessage);
       }
 
       const userData = await response.json();
