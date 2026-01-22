@@ -50,5 +50,6 @@ PORT=${PORT:-8000}
 
 echo "🌐 Starting server on port $PORT..."
 
-# Start the application (use exec to replace shell process)
-exec uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1
+# Start the application with proxy headers support (for Cloudflare/Traefik)
+# --proxy-headers tells Uvicorn to trust X-Forwarded-* headers from the reverse proxy
+exec uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1 --proxy-headers

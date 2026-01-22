@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
@@ -109,11 +109,12 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
-# Proxy Headers Middleware - MUST be first to trust Cloudflare/Traefik headers
-# This allows FastAPI to correctly detect HTTPS from proxy headers
+# Trusted Host Middleware - Allows all hosts when behind a reverse proxy
+# Uvicorn's --proxy-headers flag handles X-Forwarded-* headers
+# This middleware ensures we accept requests from any host (needed behind Cloudflare/Traefik)
 app.add_middleware(
-    ProxyHeadersMiddleware,
-    trusted_hosts="*"
+    TrustedHostMiddleware,
+    allowed_hosts=["*"]  # Allow all hosts when behind a proxy
 )
 
 # CORS middleware - MUST be added before other middleware to handle OPTIONS requests

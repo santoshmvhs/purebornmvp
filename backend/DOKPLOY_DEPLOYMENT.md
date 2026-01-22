@@ -214,9 +214,9 @@ Ensure your Cloudflare Tunnel route for `backend.pureborn.in` points to:
 ### FastAPI Proxy Headers
 
 The FastAPI app is configured to trust proxy headers from Cloudflare/Traefik:
-- `ProxyHeadersMiddleware` is enabled
-- `trusted_hosts="*"` allows all proxy hosts
-- This ensures FastAPI correctly detects HTTPS from proxy headers
+- Uvicorn is started with `--proxy-headers` flag (handles X-Forwarded-* headers)
+- `TrustedHostMiddleware` is enabled with `allowed_hosts=["*"]` to accept requests from any host
+- This ensures FastAPI correctly detects HTTPS and client IPs from proxy headers
 
 **⚠️ CRITICAL**: Do NOT add `HTTPSRedirectMiddleware` or any HTTPS redirect logic. Cloudflare already handles HTTPS termination.
 
