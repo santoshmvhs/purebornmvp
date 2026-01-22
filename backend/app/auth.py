@@ -167,13 +167,31 @@ async def get_current_user(
             if user:
                 logger.info(f"User found in database: {user.username}")
                 return user
-            # If user not found, try to find by email if we have an email column
-            # For now, raise exception - user needs to exist in our database
-            logger.warning(f"Supabase user {email} not found in database")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User not found in system. Please contact administrator."
-            )
+            
+            # Auto-create user if they don't exist but have valid Supabase token
+            # This syncs users from Supabase to our database automatically
+            logger.info(f"Supabase user {email} not found in database, auto-creating...")
+            try:
+                # Default role to 'cashier' for auto-created users
+                # Admins should be created manually or via signup endpoint
+                new_user = User(
+                    username=email,
+                    hashed_password=get_password_hash("placeholder"),  # Not used with Supabase Auth
+                    role="cashier",  # Default role for auto-created users
+                    is_active=True
+                )
+                db.add(new_user)
+                await db.commit()
+                await db.refresh(new_user)
+                logger.info(f"Auto-created user {email} in database with ID {new_user.id}")
+                return new_user
+            except Exception as e:
+                logger.error(f"Failed to auto-create user {email}: {e}", exc_info=True)
+                await db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create user account. Please contact administrator."
+                )
     else:
         logger.warning("Supabase token verification failed or SUPABASE_JWT_SECRET not set, trying regular JWT")
     
