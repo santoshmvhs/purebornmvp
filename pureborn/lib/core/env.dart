@@ -1,12 +1,12 @@
 /// Environment configuration for the Pureborn app
 class Env {
   /// API base URL
-  /// Production: http://dk8o4k0cwkw404wws4woogok.192.168.68.113.sslip.io
+  /// Production: https://backend.pureborn.in
   /// For Android emulator: http://10.0.2.2:9000
   /// For iOS simulator: http://localhost:9000
   /// For macOS desktop: http://localhost:9000
   /// For physical device: http://YOUR_COMPUTER_IP:9000
-  static const String apiBaseUrl = 'http://dk8o4k0cwkw404wws4woogok.192.168.68.113.sslip.io';
+  static const String apiBaseUrl = 'https://backend.pureborn.in';
   
   /// Supabase URL
   static const String supabaseUrl = 'https://nbptjmzakxgwpoidtxfo.supabase.co';

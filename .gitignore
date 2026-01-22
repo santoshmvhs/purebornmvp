@@ -12,6 +12,7 @@ eggs/
 .eggs/
 lib/
 !admin-panel/lib/
+!pureborn/lib/
 lib64/
 parts/
 sdist/
